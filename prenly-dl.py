@@ -9,7 +9,7 @@ from PyPDF2 import PdfFileMerger
 
 def getIssueJSON(session, credentials, issue):
     url = "https://content.textalk.se/api/v2/"
-    
+
     headers = {
         "Accept": "*/*",
         "Accept-Language": "sv-SE,en-US,en",
@@ -25,13 +25,16 @@ def getIssueJSON(session, credentials, issue):
         "Sec-Fetch-Site": "cross-site"
     }
 
-    data = '{"jsonrpc":"2.0","method":"Issue.get","params":{"title_id":'+str(issue["title"])+',"issue_uid":"'+issue["uid"]+'"},"id":1}'
+    data = '{"jsonrpc":"2.0","method":"Issue.get","params":{"title_id":' + \
+        str(issue["title"]) + ',"issue_uid":"' + issue["uid"] + '"},"id":1}'
     req = session.post(url, data=data, headers=headers)
 
     return req.text
 
+
 def getPDF(session, title, hash):
-    url = f"https://mediacdn.prenly.com/api/v2/media/get/{title}/{hash}?h=23bcb3b0f0a0d49bb18803b189f4a61b" #What is this h=23bcv... ??? All but first page works without it, without it the first page gets as webp
+    # What is this h=23bcv... ??? All but first page works without it, without it the first page gets as webp
+    url = f"https://mediacdn.prenly.com/api/v2/media/get/{title}/{hash}?h=23bcb3b0f0a0d49bb18803b189f4a61b"
 
     headers = {
         "Accept": "application/pdf",
@@ -45,6 +48,7 @@ def getPDF(session, title, hash):
 
     return session.get(url, headers=headers)
 
+
 def getHashes(JSON):
     hashes = {}
 
@@ -53,6 +57,7 @@ def getHashes(JSON):
             hashes[page["page_no"]] = page["media"][0]["checksum"]
 
     return hashes
+
 
 def pdfMerge(title):
     merger = PdfFileMerger()
@@ -64,34 +69,36 @@ def pdfMerge(title):
 
     try:
         for pdf in allpdfs:
-            os.remove(pdf)   #TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
+            # TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
+            os.remove(pdf)
     except OSError as error:
-        print(repr(error), file=sys.stderr) #At least we have som error handling for it...
+        # At least we have som error handling for it...
+        print(repr(error), file=sys.stderr)
         exit(1)
-
 
 
 def main():
     session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
-    
+    session.headers.update(
+        {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
+
     credentials = {
-        "textalk-auth": "YOUR OWN", #Look in api request content
-        "auth": "YOUR OWN" #Look in Storage/Local Storage/prenlyreadersessiontoken
+        "textalk-auth": "YOUR OWN",  # Look in api request content
+        "auth": "YOUR OWN"  # Look in Storage/Local Storage/prenlyreadersessiontoken
     }
 
-    #TODO Add support to supply list of issue uids
+    # TODO Add support to supply list of issue uids
     issue = {
         "title": 4019,
-        "uid": "490377" #uid of a specific issue
+        "uid": "490377"  # uid of a specific issue
     }
 
-    #TODO Add getopts to send title, issueid and auth as arguments, custom title instead of "title: 4019"?
+    # TODO Add getopts to send title, issueid and auth as arguments, custom title instead of "title: 4019"?
 
     JSON = json.loads(getIssueJSON(session, credentials, issue))
-    hashes = getHashes(JSON) #Extract the hashes for individual pages
+    hashes = getHashes(JSON)  # Extract the hashes for individual pages
 
-    #Get all PDFs and write them to files.
+    # Get all PDFs and write them to files.
     for page_num in hashes:
         req = getPDF(session, issue["title"], hashes[page_num])
         name = JSON['result']['name']
