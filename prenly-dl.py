@@ -11,7 +11,6 @@ def getIssueJSON(session, credentials, issue):
     url = "https://content.textalk.se/api/v2/"
     
     headers = {
-        "Host": "content.textalk.se",
         "Accept": "*/*",
         "Accept-Language": "sv-SE,en-US,en",
         "Accept-Encoding": "gzip, deflate, br",
@@ -35,7 +34,6 @@ def getPDF(session, title, hash):
     url = f"https://mediacdn.prenly.com/api/v2/media/get/{title}/{hash}?h=23bcb3b0f0a0d49bb18803b189f4a61b" #What is this h=23bcv... ??? All but first page works without it, without it the first page gets as webp
 
     headers = {
-        "Host": "mediacdn.prenly.com",
         "Accept": "application/pdf",
         "Accept-Language": "sv-SE,sv;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br",
@@ -64,8 +62,13 @@ def pdfMerge(title):
     with open(title, "wb") as merged:
         merger.write(merged)
 
-    for pdf in allpdfs: #TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
-        os.remove(pdf)
+    try:
+        for pdf in allpdfs:
+            os.remove(pdf)   #TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
+    except OSError as error:
+        print(repr(error), file=sys.stderr) #At least we have som error handling for it...
+        exit(1)
+
 
 
 def main():
