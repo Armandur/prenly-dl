@@ -1,9 +1,9 @@
-import requests
 import json
 import os
 import sys
-
 from glob import glob
+
+import requests
 from PyPDF2 import PdfFileMerger
 
 
