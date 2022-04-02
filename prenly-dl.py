@@ -1,5 +1,11 @@
 import requests
 import json
+import os
+import sys
+
+from glob import glob
+from PyPDF2 import PdfFileMerger
+
 
 def getIssueJSON(session, credentials, issue):
     url = "https://content.textalk.se/api/v2/"
@@ -50,6 +56,18 @@ def getHashes(JSON):
 
     return hashes
 
+def pdfMerge(title):
+    merger = PdfFileMerger()
+    allpdfs = [a for a in glob("*.pdf")]
+    [merger.append(pdf) for pdf in allpdfs]
+
+    with open(title, "wb") as merged:
+        merger.write(merged)
+
+    for pdf in allpdfs: #TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
+        os.remove(pdf)
+
+
 def main():
     session = requests.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
@@ -59,6 +77,7 @@ def main():
         "auth": "YOUR OWN" #Look in Storage/Local Storage/prenlyreadersessiontoken
     }
 
+    #TODO Add support to supply list of issue uids
     issue = {
         "title": 4019,
         "uid": "490377" #uid of a specific issue
@@ -72,14 +91,15 @@ def main():
     #Get all PDFs and write them to files.
     for page_num in hashes:
         req = getPDF(session, issue["title"], hashes[page_num])
-        with open(f"{JSON['result']['name']} - {page_num}.pdf", 'wb') as file:
+        name = JSON['result']['name']
+        with open(f"{name} - {page_num}.pdf", "wb") as file:
             file.write(req.content)
 
-    #TODO Add support for writing this to a folder as well as concatenating pdf files
-    #TODO Add support to supply list of issue uids
+    pdfMerge(name+".pdf")
 
     return
 
 
 if __name__ == '__main__':
-	main()
+    main()
+    sys.exit(0)
