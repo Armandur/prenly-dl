@@ -38,15 +38,15 @@ def getCatalogueIssues(session, conf, contextToken, limit=50):
     issues = []
     url = f"https://apicdn.prenly.com/api/web-reader/v1/issues?title_ids[]={conf['publication']['title']}&limit={limit}&context_token={contextToken}"
     headers = {
-            "Accept": "*/*",
-            "Accept-Language": "sv-SE,en-US,en",
-            "Accept-Encoding": "gzip",
-            "Origin": conf["credentials"]["site"],
-            "Referer": f"{conf['credentials']['site']}/",
-            "Connection": "keep-alive",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "cross-site",
+        "Accept": "*/*",
+        "Accept-Language": "sv-SE,en-US,en",
+        "Accept-Encoding": "gzip",
+        "Origin": conf["credentials"]["site"],
+        "Referer": f"{conf['credentials']['site']}/",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
     }
 
     response = session.get(url, headers=headers)
@@ -77,7 +77,7 @@ def getIssueJSON(session, issue, conf):
 
     data = json.dumps({
         "jsonrpc": "2.0",
-        "method" : "Issue.get",
+        "method": "Issue.get",
         "params": {
             "title_id": str(issue["title"]),
             "issue_uid": issue["uid"]
@@ -144,28 +144,29 @@ def pdfMerge(title):
             merger.append(pdf)
     except PdfReadError as error:
         print(f"{repr(error)} - File: {currentpdf}", file=sys.stderr)
-        print("You can try to merge the files yourself, we won't delete them", file=sys.stderr)
+        print(
+            "You can try to merge the files yourself, we won't delete them", file=sys.stderr)
     else:
         with open(f"{title}.pdf", "wb") as merged:
             merger.write(merged)
+        merger.close()
 
         try:
             for pdf in allpdfs:
-                # TODO Why doesn't this work? WinError 32, can't access file, in use by another process, can't find any process with procexp.exe...
                 os.remove(pdf)
         except OSError as error:
-            # At least we have som error handling for it...
             print(repr(error), file=sys.stderr)
-            # exit(1)
 
 
 def main(conf):
     session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
+    session.headers.update(
+        {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
 
-    #download newest to limit number of issues of publication
+    # download newest to limit number of issues of publication
     if "limit" in conf["publication"]:
-        uids = getCatalogueIssues(session, conf, getContextToken(session, conf), conf["publication"]["limit"])
+        uids = getCatalogueIssues(session, conf, getContextToken(
+            session, conf), conf["publication"]["limit"])
         conf["publication"]["uids"] = uids
 
     if len(conf["publication"]["uids"]) == 0 or "uids" not in conf["publication"]:
@@ -187,19 +188,21 @@ def main(conf):
 
         # Get all PDFs and write them to files.
         for page_num in hashes:
-            if "cdn" in conf["credentials"] and conf["credentials"]["cdn"] != "":  # Custom CDN supplied
+            # Custom CDN supplied
+            if "cdn" in conf["credentials"] and conf["credentials"]["cdn"] != "":
                 req = getPDF(
                     session, conf, hashes[page_num], conf["credentials"]["cdn"])
             else:
                 req = getPDF(session, conf, hashes[page_num])
-            
+
             name = f"{conf['prefix']}{JSON['result']['name']}"
 
             content = req.content
 
             # Sometimes we might just not get a pdf, convert response to pdf instead.
             if req.headers["content-type"] in ("image/webp", "image/jpeg", "image/png", "image/gif", "image/svg"):
-                print(f"{name} - page {page_num} is image/, not application/pdf, converting file to pdf", file=sys.stderr)
+                print(
+                    f"{name} - page {page_num} is image/, not application/pdf, converting file to pdf", file=sys.stderr)
                 image = req.content
                 content = img2pdf.convert(image)
 
@@ -221,21 +224,20 @@ def opts(argv):
     conf = {}
 
     try:
-        # title issue site, cdn, textalk, auth
-        # TODO Custom title?
-        opts, args = getopt.getopt(argv, "t:i:s:c:u:a:", [
-                                   "title=", "issue=", "site=", "cdn=", "textalk=", "auth=", "json=", "help"])
+        # publication-id, issue, site, cdn, textalk, auth, prefix
+        opts, args = getopt.getopt(argv, "p:i:s:c:u:a:o:", [
+                                   "publication=", "issue=", "site=", "cdn=", "textalk=", "auth=", "json=", "help"])
     except getopt.GetoptError as error:
         print(repr(error), file=sys.stderr)
         print(usage)
         sys.exit(2)
-        
+
     for opt, arg in opts:
         if opt == "--json":
-            with open(arg, "r") as file:
+            with open(arg, "r", encoding="utf-8") as file:
                 conf = json.loads(file.read())
             break
-        # TODO rest of options, build config with supplied options
+        # TODO rest of options, build config python with supplied options
 
     main(conf)
 
