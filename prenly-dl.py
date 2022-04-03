@@ -29,14 +29,26 @@ def getIssueJSON(session, credentials, issue):
         str(issue["title"]) + ',"issue_uid":"' + issue["uid"] + '"},"id":1}'
     req = session.post(url, data=data, headers=headers)
 
+    #TODO Check response for API error
+
+    # DEBUG to print json response
+    #with open("response.json", 'w') as file:
+    #    file.write(req.text)
+    
+    #exit(0)
+
     return req.text
 
 
-def getPDF(session, title, hash):
+def getPDF(session, issue, hash, h, cdn="https://mediacdn.prenly.com"):
+    #Some sites may use another cdn
     # What is this h=23bcv... ??? All but first page works without it, without it the first page gets as webp
-    url = f"https://mediacdn.prenly.com/api/v2/media/get/{title}/{hash}?h=23bcb3b0f0a0d49bb18803b189f4a61b"
+    
+    url = f"{cdn}/api/v2/media/get/{issue['title']}/{hash}?h={h}"
 
     headers = {
+        "Origin": issue["site"],
+        "Referer": f"{issue['site']}/",
         "Accept": "application/pdf",
         "Accept-Language": "sv-SE,sv;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br",
@@ -46,7 +58,8 @@ def getPDF(session, title, hash):
         "Sec-Fetch-Site": "cross-site"
     }
 
-    return session.get(url, headers=headers)
+    response = session.get(url, headers=headers) #TODO Check for response error, wrong CDN, h, auth etc
+    return response
 
 
 def getHashes(JSON):
@@ -54,7 +67,9 @@ def getHashes(JSON):
 
     for spread in JSON["result"]["replica_spreads"]:
         for page in spread["pages"]:
-            hashes[page["page_no"]] = page["media"][0]["checksum"]
+            number = int(page["page_no"])
+            page_num = str(number).zfill(3) #pad the numbers to get them in order when globbing pdfs for merging
+            hashes[page_num] = page["media"][0]["checksum"]
 
     return hashes
 
@@ -83,24 +98,34 @@ def main():
         {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
 
     credentials = {
-        "textalk-auth": "YOUR OWN",  # Look in api request content
-        "auth": "YOUR OWN"  # Look in Storage/Local Storage/prenlyreadersessiontoken
+        "textalk-auth": "YOUR OWN", #Look in api request content
+        "auth": "YOUR OWN", #Look in Storage/Local Storage/prenlyreadersessiontoken
+        "h": "YOUR OWN" #Look in pdf-request to api
     }
 
     # TODO Add support to supply list of issue uids
     issue = {
-        "title": 4019,
-        "uid": "490377"  # uid of a specific issue
+        "title": 4019,      # ID of a paper
+        "uid": "517313",    # uid of a specific issue
+        "site": "https://hemslojd.prenly.com" # URL of reader
     }
 
-    # TODO Add getopts to send title, issueid and auth as arguments, custom title instead of "title: 4019"?
-
+    # TODO Add getopts
+    # Getopts:
+    #   - Title
+    #   - IssueID
+    #   - Site
+    #   - Auth
+    #   - CDN
+    #   - h
+    #   --json of above
+    
     JSON = json.loads(getIssueJSON(session, credentials, issue))
     hashes = getHashes(JSON)  # Extract the hashes for individual pages
 
     # Get all PDFs and write them to files.
     for page_num in hashes:
-        req = getPDF(session, issue["title"], hashes[page_num])
+        req = getPDF(session, issue, hashes[page_num], credentials["h"])
         name = JSON['result']['name']
         with open(f"{name} - {page_num}.pdf", "wb") as file:
             file.write(req.content)
