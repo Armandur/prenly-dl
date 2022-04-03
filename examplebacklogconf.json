@@ -9,10 +9,7 @@
     "publication":
     {
         "title": 4019,  # ID of a paper
-        "uids": [       # UIDs of issues to download from paper, look in request to /api/v2 for issue_uid
-            "517313",
-            "490377"
-        ]
+        "limit": 10    # Limit of backlog issues from newest to get
     },
     "prefix": "Newspaper - " # String to prefix files with
 }

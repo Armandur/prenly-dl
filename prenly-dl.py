@@ -11,7 +11,53 @@ from PyPDF2 import PdfFileMerger
 from PyPDF2.utils import PdfReadError
 
 
-def getIssueJSON(session, credentials, issue):
+def getContextToken(session, conf):
+    url = "https://content.textalk.se/api/web-reader/v1/context-token"
+    headers = {
+        "Accept": "*/*",
+        "Accept-Language": "sv-SE,en-US,en",
+        "Accept-Encoding": "gzip, deflate, br",
+        "X-Requested-With": "XMLHttpRequest",
+        "Content-Type": "application/json-rpc",
+        "X-Textalk-Content-Client-Authorize": conf["credentials"]["textalk-auth"],
+        "X-Textalk-Content-Product-Type": "webapp",
+        "Authorization": f"Bearer {conf['credentials']['auth']}",
+        "Origin": conf["credentials"]["site"],
+        "Referer": f"{conf['credentials']['site']}/",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site"
+    }
+    token = json.loads(session.get(url, headers=headers).text)["token"]
+
+    return token
+
+
+def getCatalogueIssues(session, conf, contextToken, limit=50):
+    issues = []
+    url = f"https://apicdn.prenly.com/api/web-reader/v1/issues?title_ids[]={conf['publication']['title']}&limit={limit}&context_token={contextToken}"
+    headers = {
+            "Accept": "*/*",
+            "Accept-Language": "sv-SE,en-US,en",
+            "Accept-Encoding": "gzip",
+            "Origin": conf["credentials"]["site"],
+            "Referer": f"{conf['credentials']['site']}/",
+            "Connection": "keep-alive",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
+    }
+
+    response = session.get(url, headers=headers)
+    JSON = json.loads(response.text)
+
+    for issue in JSON:
+        issues.append(issue["uid"])
+    return issues
+
+
+def getIssueJSON(session, issue, conf):
     url = "https://content.textalk.se/api/v2/"
 
     headers = {
@@ -20,9 +66,9 @@ def getIssueJSON(session, credentials, issue):
         "Accept-Encoding": "gzip, deflate, br",
         "X-Requested-With": "XMLHttpRequest",
         "Content-Type": "application/json-rpc",
-        "X-Textalk-Content-Client-Authorize": credentials["textalk-auth"],
+        "X-Textalk-Content-Client-Authorize": conf["credentials"]["textalk-auth"],
         "X-Textalk-Content-Product-Type": "webapp",
-        "Authorization": f"Bearer {credentials['auth']}",
+        "Authorization": f"Bearer {conf['credentials']['auth']}",
         "Connection": "keep-alive",
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
@@ -50,14 +96,14 @@ def getIssueJSON(session, credentials, issue):
     return JSON
 
 
-def getPDF(session, issue, hash, cdn="https://mediacdn.prenly.com"):
+def getPDF(session, conf, hash, cdn="https://mediacdn.prenly.com"):
     # Some sites may use another cdn
 
-    url = f"{cdn}/api/v2/media/get/{issue['title']}/{hash}?h=abc"
+    url = f"{cdn}/api/v2/media/get/{conf['publication']['title']}/{hash}?h=abc"
 
     headers = {
-        "Origin": issue["site"],
-        "Referer": f"{issue['site']}/",
+        "Origin": conf["credentials"]["site"],
+        "Referer": f"{conf['credentials']['site']}/",
         "Accept": "application/pdf",
         "Accept-Language": "sv-SE,sv;q=0.8,en-US;q=0.5,en;q=0.3",
         "Accept-Encoding": "gzip, deflate, br",
@@ -114,29 +160,40 @@ def pdfMerge(title):
 
 
 def main(conf):
-    # Support for multiple uids
-    for uid in conf["issue"]["uids"]:
+    session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
+
+    #download newest to limit number of issues of publication
+    if "limit" in conf["publication"]:
+        uids = getCatalogueIssues(session, conf, getContextToken(session, conf), conf["publication"]["limit"])
+        conf["publication"]["uids"] = uids
+
+    if len(conf["publication"]["uids"]) == 0 or "uids" not in conf["publication"]:
+        print("No uids supplied", file=sys.stderr)
+        exit(1)
+
+    if "prefix" not in conf:
+        conf["prefix"] = ""
+
+    for uid in conf["publication"]["uids"]:
         issue = {
-            "title": conf["issue"]["title"],
+            "title": conf["publication"]["title"],
             "uid": uid,
-            "site": conf["issue"]["site"]
+            "site": conf["credentials"]["site"]
         }
 
-        session = requests.Session()
-        session.headers.update(
-            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
-
-        JSON = getIssueJSON(session, conf["credentials"], issue)
+        JSON = getIssueJSON(session, issue, conf)
         hashes = getHashes(JSON)  # Extract the hashes for individual pages
 
         # Get all PDFs and write them to files.
         for page_num in hashes:
-            if "cdn" in conf["issue"] and conf["issue"]["cdn"] != "":  # Custom CDN supplied
+            if "cdn" in conf["credentials"] and conf["credentials"]["cdn"] != "":  # Custom CDN supplied
                 req = getPDF(
-                    session, issue, hashes[page_num], conf["issue"]["cdn"])
+                    session, conf, hashes[page_num], conf["credentials"]["cdn"])
             else:
-                req = getPDF(session, issue, hashes[page_num])
-            name = JSON['result']['name']
+                req = getPDF(session, conf, hashes[page_num])
+            
+            name = f"{conf['prefix']}{JSON['result']['name']}"
 
             content = req.content
 
@@ -161,7 +218,7 @@ def opts(argv):
         print(usage)
         sys.exit(1)
 
-    config = {}
+    conf = {}
 
     try:
         # title issue site, cdn, textalk, auth
@@ -172,14 +229,15 @@ def opts(argv):
         print(repr(error), file=sys.stderr)
         print(usage)
         sys.exit(2)
+        
     for opt, arg in opts:
         if opt == "--json":
             with open(arg, "r") as file:
-                config = json.loads(file.read())
+                conf = json.loads(file.read())
             break
         # TODO rest of options, build config with supplied options
 
-    main(config)
+    main(conf)
 
 
 if __name__ == '__main__':
