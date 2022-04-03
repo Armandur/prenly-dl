@@ -33,15 +33,13 @@ def getIssueJSON(session, credentials, issue):
         str(issue["title"]) + ',"issue_uid":"' + issue["uid"] + '"},"id":1}'
     req = session.post(url, data=data, headers=headers)
 
-    # TODO Check response for API error
+    JSON = json.loads(req.text)
 
-    # DEBUG to print json response
-    # with open("response.json", 'w') as file:
-    #    file.write(req.text)
+    if "error" in JSON:
+        print(f"POST {url} - {JSON['error']}", file=sys.stderr)
+        sys.exit(1)
 
-    # exit(0)
-
-    return req.text
+    return JSON
 
 
 def getPDF(session, issue, hash, h, cdn="https://mediacdn.prenly.com"):
@@ -62,8 +60,11 @@ def getPDF(session, issue, hash, h, cdn="https://mediacdn.prenly.com"):
         "Sec-Fetch-Site": "cross-site"
     }
 
-    # TODO Check for response error, wrong CDN, h, auth etc
     response = session.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"GET {url} Error {response.status_code}", file=sys.stderr)
+        sys.exit(1)
+
     return response
 
 
@@ -118,7 +119,7 @@ def main(conf):
         session.headers.update(
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})
 
-        JSON = json.loads(getIssueJSON(session, conf["credentials"], issue))
+        JSON = getIssueJSON(session, conf["credentials"], issue)
         hashes = getHashes(JSON)  # Extract the hashes for individual pages
 
         # Get all PDFs and write them to files.
@@ -135,7 +136,7 @@ def main(conf):
 
             # Sometimes we might just not get a pdf, convert response to pdf instead.
             if req.headers["content-type"] in ("image/webp", "image/jpeg", "image/png", "image/gif", "image/svg"):
-                print(f"{name} - page {page_num} is image/, not application/pdf, we convert file to pdf", file=sys.stderr)
+                print(f"{name} - page {page_num} is image/, not application/pdf, converting file to pdf", file=sys.stderr)
                 image = req.content
                 content = img2pdf.convert(image)
 
