@@ -7,3 +7,6 @@ Utility to download pdfs from prenlys online viewer.
 * Pillow
 * img2pdf
 * requests
+
+## Usage
+> prenly-dl --json=conf.json
