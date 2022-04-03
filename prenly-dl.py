@@ -29,8 +29,16 @@ def getIssueJSON(session, credentials, issue):
         "Sec-Fetch-Site": "cross-site"
     }
 
-    data = '{"jsonrpc":"2.0","method":"Issue.get","params":{"title_id":' + \
-        str(issue["title"]) + ',"issue_uid":"' + issue["uid"] + '"},"id":1}'
+    data = json.dumps({
+        "jsonrpc": "2.0",
+        "method" : "Issue.get",
+        "params": {
+            "title_id": str(issue["title"]),
+            "issue_uid": issue["uid"]
+        },
+        "id": 1
+    })
+
     req = session.post(url, data=data, headers=headers)
 
     JSON = json.loads(req.text)
@@ -42,11 +50,10 @@ def getIssueJSON(session, credentials, issue):
     return JSON
 
 
-def getPDF(session, issue, hash, h, cdn="https://mediacdn.prenly.com"):
+def getPDF(session, issue, hash, cdn="https://mediacdn.prenly.com"):
     # Some sites may use another cdn
-    # What is this h=23bcv... ??? All but first page works without it, without it the first page gets as webp
 
-    url = f"{cdn}/api/v2/media/get/{issue['title']}/{hash}?h={h}"
+    url = f"{cdn}/api/v2/media/get/{issue['title']}/{hash}?h=abc"
 
     headers = {
         "Origin": issue["site"],
@@ -126,10 +133,9 @@ def main(conf):
         for page_num in hashes:
             if "cdn" in conf["issue"] and conf["issue"]["cdn"] != "":  # Custom CDN supplied
                 req = getPDF(
-                    session, issue, hashes[page_num], conf["credentials"]["h"], conf["issue"]["cdn"])
+                    session, issue, hashes[page_num], conf["issue"]["cdn"])
             else:
-                req = getPDF(session, issue,
-                             hashes[page_num], conf["credentials"]["h"])
+                req = getPDF(session, issue, hashes[page_num])
             name = JSON['result']['name']
 
             content = req.content
@@ -158,9 +164,9 @@ def opts(argv):
     config = {}
 
     try:
-        # title issue site, cdn, textalk, auth, h=23ob...
+        # title issue site, cdn, textalk, auth
         # TODO Custom title?
-        opts, args = getopt.getopt(argv, "t:i:s:c:u:a:h:", [
+        opts, args = getopt.getopt(argv, "t:i:s:c:u:a:", [
                                    "title=", "issue=", "site=", "cdn=", "textalk=", "auth=", "json=", "help"])
     except getopt.GetoptError as error:
         print(repr(error), file=sys.stderr)

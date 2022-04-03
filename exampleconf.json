@@ -1,14 +1,13 @@
 {
     "credentials":
     {
-        "textalk-auth": "YOUR OWN", #Look in api/v2/ request header (X-Textalk-Content-Client-Authorize), seems to be persistent
-        "auth": "YOUR OWN", #Look in Storage/Local Storage/prenlyreadersessiontoken or headers of request to api/v2/, remove "Bearer ", seems to be persistent
-        "h": "YOUR OWN" #Look in url of pdf-request to api/v2/, seems to be persistent
+        "textalk-auth": "YOUR OWN", # Look in api/v2/ request header (X-Textalk-Content-Client-Authorize), seems to be persistent
+        "auth": "YOUR OWN", # Look in Storage/Local Storage/prenlyreadersessiontoken or headers of request to api/v2/, remove "Bearer ", seems to be persistent
     },
     "issue":
     {
         "title": 4019,  # ID of a paper
-        "uids": [       #UIDs of issues to download from paper, look in request to /api/v2 for issue_uid
+        "uids": [       # UIDs of issues to download from paper, look in request to /api/v2 for issue_uid
             "517313",
             "490377"
         ],
