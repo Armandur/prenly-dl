@@ -3,12 +3,11 @@ import json
 import os
 import sys
 from glob import glob
-from PIL import Image
 import img2pdf
 
 import requests
 from PyPDF2 import PdfFileMerger
-from PyPDF2.utils import PdfReadError
+from PyPDF2.errors import PdfReadError
 
 
 def getContextToken(session, conf):
