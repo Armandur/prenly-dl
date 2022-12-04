@@ -190,6 +190,11 @@ def main(conf):
         JSON = getIssueJSON(session, issue, conf)
         hashes = getHashes(JSON)  # Extract the hashes for individual pages
 
+        fileName = f"{conf['prefix']}{JSON['result']['name']}.pdf"
+        if os.path.isfile(fileName):
+            print(f"File {fileName} already exists. Use --force to redownload", file=sys.stderr) # TODO Add force option :)
+            exit(1)
+
         # Get all PDFs and write them to files.
         for page_num in hashes:
             # Custom CDN supplied
