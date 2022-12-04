@@ -149,6 +149,7 @@ def pdfMerge(title):
         with open(f"{title}.pdf", "wb") as merged:
             merger.write(merged)
         merger.close()
+        print(f'Downloaded "{title}.pdf"', file=sys.stderr)
 
         try:
             for pdf in allpdfs:
@@ -192,8 +193,11 @@ def main(conf):
 
         fileName = f"{conf['prefix']}{JSON['result']['name']}.pdf"
         if os.path.isfile(fileName):
-            print(f"File {fileName} already exists. Use --force to redownload", file=sys.stderr) # TODO Add force option :)
-            sys.exit(1)
+            if conf["force"] != "True": 
+                print(f"File {fileName} already exists. Use --force to redownload", file=sys.stderr)
+                sys.exit(1)
+            else: #Remove downloaded file and continue with redownload
+                os.remove(fileName)
 
         # Get all PDFs and write them to files.
         for page_num in hashes:
@@ -234,12 +238,14 @@ def opts(argv):
 
     try:
         # publication-id, issue, site, cdn, textalk, auth, prefix
-        opts, args = getopt.getopt(argv, "p:i:s:c:u:a:o:", [
-                                   "publication=", "issue=", "site=", "cdn=", "textalk=", "auth=", "json=", "help"])
+        opts, args = getopt.getopt(argv, "p:i:s:c:u:a:o:F", [
+                                   "publication=", "issue=", "site=", "cdn=", "textalk=", "auth=", "json=", "force", "help"])
     except getopt.GetoptError as error:
         print(repr(error), file=sys.stderr)
         print(usage)
         sys.exit(2)
+    
+    force = "False"
 
     for opt, arg in opts:
         if opt == "--json":
@@ -253,8 +259,16 @@ def opts(argv):
             except json.decoder.JSONDecodeError as error:
                 print(f"Malformed JSON-file!\n{repr(error)}")
                 sys.exit(1)
+        
+        if opt == "--force":
+            print("Forcing redownload", file=sys.stderr)
+            force = "True"
 
         # TODO rest of options, build config python with supplied options
+
+    # Set defaults
+    if "force" not in conf:
+        conf["force"] = force
 
     main(conf)
 
