@@ -250,6 +250,9 @@ def opts(argv):
             except OSError as error:
                 print(f"Configurationfile {arg} not found!\n{repr(error)}", file=sys.stderr)
                 sys.exit(1)
+            except json.decoder.JSONDecodeError as error:
+                print(f"Malformed JSON-file!\n{repr(error)}")
+                sys.exit(1)
 
         # TODO rest of options, build config python with supplied options
 
