@@ -9,7 +9,6 @@ img2pdf = "*"
 requests = "*"
 
 [dev-packages]
-pylint = "*"
 
 [requires]
 python_version = "3"
