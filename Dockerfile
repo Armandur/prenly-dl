@@ -18,6 +18,8 @@ RUN apk add py3-pikepdf
 RUN pip install requests pypdf2 img2pdf
 
 # Download and unzip
+# Always get latest commit == always newest files
+ADD "https://api.github.com/repos/Armandur/prenly-dl/commits?per_page=1" latest_commit
 RUN curl -L https://github.com/Armandur/prenly-dl/archive/refs/heads/main.zip -o "main.zip" && unzip "main.zip"
 RUN mv prenly-dl-main/* . && rm -rf prenly-dl-main/ && rm main.zip
 
@@ -28,7 +30,7 @@ RUN chmod 755 /conf /output
 
 ENV CONF_FILE="default.json"
 
-#Create startup-script
+# Create startup-script
 RUN echo "python /app/prenly-dl.py --json=/conf/\$CONF_FILE" > /app/startup.sh
 
 WORKDIR /output
