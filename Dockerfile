@@ -24,13 +24,14 @@ RUN mv prenly-dl-main/* . && rm -rf prenly-dl-main/ && rm main.zip
 # Make configuration and output directory
 RUN mkdir /conf
 RUN mkdir /output
-RUN mv *.json /conf/
+RUN chmod 755 /conf /output
 
 ENV CONF_FILE="default.json"
-
-WORKDIR /output
 
 #Create startup-script
 RUN echo "python /app/prenly-dl.py --json=/conf/\$CONF_FILE" > /app/startup.sh
 
+WORKDIR /output
+#Used for compatibility with Unraid
+USER 99:100
 ENTRYPOINT ["/bin/sh", "/app/startup.sh"]
