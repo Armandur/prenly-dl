@@ -197,6 +197,7 @@ def main(conf):
                 print(f"File {fileName} already exists. Use --force to redownload", file=sys.stderr)
                 sys.exit(1)
             else: #Remove downloaded file and continue with redownload
+                print(f"Forcing redownload of {fileName}", file=sys.stderr)
                 os.remove(fileName)
 
         # Get all PDFs and write them to files.
