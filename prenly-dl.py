@@ -175,7 +175,7 @@ def main(conf):
 
     if len(conf["publication"]["uids"]) == 0 or "uids" not in conf["publication"]:
         print("No uids supplied", file=sys.stderr)
-        exit(1)
+        sys.exit(1)
 
     if "prefix" not in conf:
         conf["prefix"] = ""
@@ -193,7 +193,7 @@ def main(conf):
         fileName = f"{conf['prefix']}{JSON['result']['name']}.pdf"
         if os.path.isfile(fileName):
             print(f"File {fileName} already exists. Use --force to redownload", file=sys.stderr) # TODO Add force option :)
-            exit(1)
+            sys.exit(1)
 
         # Get all PDFs and write them to files.
         for page_num in hashes:
@@ -243,9 +243,14 @@ def opts(argv):
 
     for opt, arg in opts:
         if opt == "--json":
-            with open(arg, "r", encoding="utf-8") as file:
-                conf = json.loads(file.read())
-            break
+            try:
+                with open(arg, "r", encoding="utf-8") as file:
+                    conf = json.loads(file.read())
+                break
+            except OSError as error:
+                print(f"Configurationfile {arg} not found!\n{repr(error)}", file=sys.stderr)
+                sys.exit(1)
+
         # TODO rest of options, build config python with supplied options
 
     main(conf)
