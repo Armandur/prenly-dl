@@ -158,6 +158,11 @@ def pdfMerge(title):
 
 
 def main(conf):
+    if "folder" in conf and conf["folder"] != "":
+        if not os.path.exists(conf["folder"]):
+            os.makedirs(conf["folder"])
+        os.chdir(conf["folder"])
+
     session = requests.Session()
     session.headers.update(
         {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0"})

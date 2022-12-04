@@ -14,5 +14,6 @@
             "490377"
         ]
     },
-    "prefix": "Newspaper - " # String to prefix files with
+    "prefix": "Newspaper - ", # String to prefix files with
+    "folder": "FOLDER" # Optional folder to put pdfs in
 }

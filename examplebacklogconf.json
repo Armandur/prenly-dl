@@ -11,5 +11,6 @@
         "title": 4019,  # ID of a paper
         "limit": 10    # Limit of backlog issues from newest to get
     },
-    "prefix": "Newspaper - " # String to prefix files with
+    "prefix": "Newspaper - ", # String to prefix files with
+    "folder": "FOLDER" # Optional folder to put pdfs in
 }
