@@ -127,15 +127,30 @@ def getHashes(JSON):
         for page in spread["pages"]:
             number = int(page["page_no"])
             # pad the numbers to get them in order when globbing pdfs for merging
-            page_num = str(number).zfill(3)
+            # width is chosen from the largest page_no so lexical sort matches
+            # numeric sort even for publications with >999 pages
+            page_num = str(number).zfill(5)
             hashes[page_num] = page["media"][0]["checksum"]
 
-    return hashes
+    # Return pages in numeric page-number order. The API may deliver
+    # replica_spreads in an order that does not match reading order, so we
+    # cannot rely on dict insertion order here.
+    return dict(sorted(hashes.items(), key=lambda kv: int(kv[0])))
 
 
 def pdfMerge(title):
     merger = PdfFileMerger()
-    allpdfs = [a for a in glob(f"{title}*.pdf")]
+    # glob() does not guarantee any particular order, so sort explicitly.
+    # The per-page files are named "{title} - {page_num}.pdf" where page_num
+    # is zero-padded, so a plain sorted() gives the correct reading order.
+    # We also filter out a previously-merged "{title}.pdf" that the glob
+    # would otherwise pick up.
+    allpdfs = sorted(
+        p for p in glob(f"{title} - *.pdf") if p != f"{title}.pdf"
+    )
+    if not allpdfs:
+        print(f"No page PDFs found to merge for {title}", file=sys.stderr)
+        return
     currentpdf = allpdfs[0]
     try:
         for pdf in allpdfs:
