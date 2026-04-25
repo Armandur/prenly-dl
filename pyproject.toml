@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prenly-dl"
+version = "0.1.0"
+description = "Laddar ner tidningsnummer från Prenly-plattformen (Textalk)"
+requires-python = ">=3.8"
+dependencies = [
+    "requests",
+    "img2pdf",
+    "pypdf",
+]
+
+[project.scripts]
+prenly-dl = "prenly_dl.__main__:main"

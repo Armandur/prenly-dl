@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>prenly-dl konfigurator</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 740px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; color: #222; }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; }
+    .bm-link { display: inline-block; background: #0e639c; color: #fff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 1rem; font-weight: bold; }
+    .bm-link:hover { background: #1177bb; }
+    .note { background: #fff3cd; border-left: 4px solid #f0a500; padding: 10px 14px; border-radius: 0 4px 4px 0; font-size: 14px; margin: 16px 0; }
+    .note code { font-size: 12px; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
+    ol li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <h1>prenly-dl konfigurator</h1>
+  <p>Öppna ett Prenly-läsarfönster och klicka på bokmärket — en dialogruta hjälper dig fylla i konfigen.</p>
+
+  <p>
+    <a id="bm-link" class="bm-link" href="#">prenly-dl konfigurator</a>
+    &nbsp; ← dra till bokmärkesfältet
+  </p>
+
+  <div class="note">
+    <strong>Obs:</strong> Bokmärket fyller i <code>site</code> och <code>auth</code> automatiskt.
+    <code>textalk-auth</code> måste hämtas manuellt: DevTools → Network → klicka på en
+    <code>api/v2</code>-request → Request Headers → <em>X-Textalk-Content-Client-Authorize</em>.
+  </div>
+
+  <h2>Alternativ: kör i DevTools-konsolen</h2>
+  <ol>
+    <li>Öppna Prenly-läsaren i webbläsaren och logga in.</li>
+    <li>Öppna DevTools (F12) och gå till fliken <strong>Console</strong>.</li>
+    <li>Klistra in koden nedan och tryck Enter.</li>
+  </ol>
+  <pre id="source-display"></pre>
+
+  <!--
+    Bookmarklet-källkoden lagras här som text/plain för att inte köras.
+    HTML-sidan URL-kodar den och sätter den som href på bokmärkeslänken.
+  -->
+  <script id="bm-source" type="text/plain">
+(function () {
+  function inputStyle(auto) {
+    return 'display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:6px 8px;'
+      + 'border-radius:4px;font-family:monospace;font-size:11px;background:#2d2d2d;color:#d4d4d4;'
+      + 'border:1px solid ' + (auto ? '#3d8b37' : '#555');
+  }
+
+  var auth = (localStorage.getItem('prenlyreadersessiontoken') || '').replace(/^Bearer /, '');
+  var site = location.origin;
+
+  // Plocka ut numeriska segment (>=4 siffror) ur URL-sökvägen som ledtrådar för title och uid.
+  var nums = location.pathname.split('/').filter(function (p) { return /^\d{4,}$/.test(p); });
+  var title = nums[0] || '';
+  var uid = nums[1] || '';
+
+  function field(id, label, hint, val, auto) {
+    return '<label style="display:block;margin-bottom:10px;font-size:12px">' + label
+      + (hint ? ' <span style="color:#888;font-weight:normal">' + hint + '</span>' : '')
+      + '<input id="' + id + '" value="' + String(val).replace(/"/g, '&quot;') + '"'
+      + (auto ? ' readonly' : '')
+      + ' style="' + inputStyle(auto) + '"></label>';
+  }
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);'
+    + 'z-index:2147483647;display:flex;align-items:center;justify-content:center';
+
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1e1e1e;color:#d4d4d4;padding:24px;border-radius:8px;'
+    + 'width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;font-family:monospace';
+
+  box.innerHTML =
+    '<h2 style="margin:0 0 12px;color:#fff;font-size:15px">prenly-dl konfigurator</h2>'
+    + '<p style="margin:0 0 14px;font-size:11px;color:#888">Grön kant = automatiskt ifyllt. Fyll i de övriga.</p>'
+    + field('prl-site', 'site', '', site, 1)
+    + field('prl-auth', 'auth', auth ? '(localStorage)' : '(saknas — hittades ej)', auth, !!auth)
+    + field('prl-textalk', 'textalk-auth',
+        '(Network &rarr; api/v2 &rarr; X-Textalk-Content-Client-Authorize)', '', 0)
+    + field('prl-title', 'publication.title',
+        title ? '(fr&aring;n URL)' : '(ange manuellt)', title, !!title)
+    + field('prl-uid', 'publication.uids[0]',
+        '(valfri &mdash; lämna tomt för limit:1)', uid, !!uid)
+    + '<button id="prl-gen" style="background:#0e639c;color:#fff;border:none;padding:8px 14px;'
+    + 'border-radius:4px;cursor:pointer;font-size:13px">Generera JSON</button>'
+    + ' <button id="prl-cls" style="background:transparent;color:#888;border:1px solid #444;'
+    + 'padding:8px 14px;border-radius:4px;cursor:pointer;font-size:13px">Stäng</button>'
+    + '<pre id="prl-out" style="display:none;margin-top:14px;background:#0d0d0d;padding:12px;'
+    + 'border-radius:4px;font-size:11px;white-space:pre-wrap;word-break:break-all"></pre>'
+    + '<button id="prl-cp" style="display:none;background:#3d8b37;color:#fff;border:none;'
+    + 'padding:8px 14px;border-radius:4px;cursor:pointer;font-size:13px;margin-top:8px">'
+    + 'Kopiera JSON</button>';
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  document.getElementById('prl-cls').onclick = function () { document.body.removeChild(overlay); };
+  overlay.onclick = function (e) { if (e.target === overlay) document.body.removeChild(overlay); };
+
+  document.getElementById('prl-gen').onclick = function () {
+    var t = document.getElementById('prl-title').value.trim();
+    var conf = {
+      credentials: {
+        site: document.getElementById('prl-site').value,
+        cdn: '',
+        'textalk-auth': document.getElementById('prl-textalk').value,
+        auth: document.getElementById('prl-auth').value
+      },
+      publication: { title: +t || t },
+      prefix: '',
+      folder: ''
+    };
+    var u = document.getElementById('prl-uid').value.trim();
+    if (u) { conf.publication.uids = [u]; } else { conf.publication.limit = 1; }
+
+    var out = document.getElementById('prl-out');
+    var cp = document.getElementById('prl-cp');
+    out.style.display = 'block';
+    cp.style.display = 'inline-block';
+    out.textContent = JSON.stringify(conf, null, 2);
+
+    cp.onclick = function () {
+      navigator.clipboard.writeText(out.textContent).then(function () {
+        cp.textContent = 'Kopierat!';
+        setTimeout(function () { cp.textContent = 'Kopiera JSON'; }, 2000);
+      });
+    };
+  };
+})();
+  </script>
+
+  <script>
+    var src = document.getElementById('bm-source').textContent.trim();
+    document.getElementById('bm-link').href = 'javascript:' + encodeURIComponent(src);
+    document.getElementById('source-display').textContent = src;
+  </script>
+</body>
+</html>
