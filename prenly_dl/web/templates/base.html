@@ -90,6 +90,9 @@
         }
 
         const ursprunglig = knapp.textContent.trim();
+        // Lås bredden innan texten byts, annars krymper knappen när
+        // "Förhandsgranska" blir "Bygger" och raden hoppar till.
+        knapp.style.minWidth = knapp.offsetWidth + "px";
         knapp.disabled = true;
         knapp.setAttribute("aria-busy", "true");
         knapp.textContent = "Bygger";
@@ -109,6 +112,7 @@
           if (flik) {
             flik.opener = null;
             knapp.textContent = ursprunglig;
+            knapp.style.minWidth = "";
           } else {
             knapp.dataset.klar = data.url;
             knapp.textContent = "Öppna";

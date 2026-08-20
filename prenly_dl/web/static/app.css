@@ -146,6 +146,12 @@ td.cover-cell { width: 3.5rem; padding-right: 0; }
 .rad-otillganglig td { opacity: 0.55; }
 .kortbesked { font-size: 0.85rem; color: var(--pico-primary); }
 
+/* Spinnern lägger sig före texten som ett ::before med egen marginal, så
+   innehållet måste centreras aktivt för att stå mitt i knappen. */
+button.forhandsgranska {
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator { display: inline; }
