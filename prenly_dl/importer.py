@@ -90,23 +90,26 @@ def extract_configs(text: str) -> list[dict]:
                 except ValueError:
                     start = None
                     continue
-                # Bara objekt som faktiskt är konfigurationer räknas -
-                # utskriften innehåller även andra objekt.
+                # Ett block räknas när det bär inloggningsuppgifter.
+                # Vilka publikationer de ger tillgång till frågar vi API:t
+                # om, så publication är valfri - äldre konfigurationsfiler
+                # har den, konsolsnutten inte.
                 if (
                     isinstance(kandidat, dict)
                     and isinstance(kandidat.get("credentials"), dict)
-                    and isinstance(kandidat.get("publication"), dict)
-                    and kandidat["publication"].get("title") is not None
+                    and kandidat["credentials"].get("site")
+                    and kandidat["credentials"].get("auth")
                 ):
                     funna.append(kandidat)
                 start = None
 
-    # Samma publikation kan förekomma flera gånger i en klistrad text.
+    # Samma sajt och titel kan förekomma flera gånger i en klistrad text.
     unika: dict[tuple, dict] = {}
     for conf in funna:
+        publication = conf.get("publication") or {}
         nyckel = (
             str(conf["credentials"].get("site", "")).rstrip("/"),
-            str(conf["publication"]["title"]),
+            str(publication.get("title", "")),
         )
         unika[nyckel] = conf
     return list(unika.values())

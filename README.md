@@ -8,6 +8,8 @@ webbgränssnitt, schemaläggning och jobbkö.
 
 ## Funktioner
 
+- Katalog över allt dina inloggningsuppgifter ger tillgång till, med en
+  växel per titel för vad som ska bevakas.
 - Webbui för publikationer, utgåvor, jobb och schema.
 - Schemalagd katalogkontroll (cron) som köar nedladdning av nya utgåvor.
 - Jobbkö med förloppsvisning och historik.
@@ -85,21 +87,20 @@ kontot faktiskt kan läsa vid "Ingen prenumeration":
 1. Logga in på tidningens läsarsida i webbläsaren.
 2. Öppna `/uppgifter` i prenly-dl, kopiera konsolsnutten och kör den i
    webbläsarens konsol (F12 → Console) på läsarsidan.
-3. Klistra in resultatet i inklistringsytan på samma sida. Ett enskilt
-   JSON-block eller hela konsolutskriften fungerar lika bra - alla
-   konfigurationer i texten plockas ut, du väljer vilka som ska sparas, och
-   publikationer du redan har känns igen på sajt och titel-ID och får de nya
-   uppgifterna i stället för att läggas till på nytt.
+3. Klistra in resultatet i rutan högst upp på samma sida. Alla titlar sajten
+   exponerar sparas i katalogen, och de du kryssar i bevakas.
 
-Snutten läser klientnyckeln ur sidans egen `PrenlyData`-konfiguration och
-sessionstoken ur `localStorage`, och frågar sedan Prenly vilka publikationer
-kontot kan läsa. Ingen letning i Network-fliken, och publikationens ID
-behöver inte vara känt i förväg.
+Snutten läser fyra värden: sajtens adress, klientnyckeln ur sidans egen
+`PrenlyData`-konfiguration, sessionstoken ur `localStorage` och sajtens CDN.
+Den kopierar dem till urklipp. Vilka publikationer uppgifterna ger tillgång
+till frågar prenly-dl om när du klistrar in dem, så ingen letning i
+Network-fliken och inget publikations-ID behöver vara känt.
 
-Säger snutten att en publikation inte är läsbar stämmer uppgifterna, men
-prenumerationen täcker inte den titeln. Nya uppgifter hjälper alltså inte
-där - däremot kan tidningen finnas under ett annat publikations-ID, vilket
-snuttens tabell visar.
+Uppgifterna hör till sajten och delas av alla dess titlar: en inklistring
+räcker för att förnya hela DN eller hela Ångermanland.
+
+Står en titel som "Ingen läsrätt" i katalogen stämmer uppgifterna, men
+prenumerationen täcker inte just den titeln.
 
 ### Vad arkivet innehåller
 

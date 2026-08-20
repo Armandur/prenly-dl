@@ -256,7 +256,8 @@ def _konsolsnutt() -> str:
 def credentials_help(request: Request):
     """Konsolsnutten och ytan att klistra in resultatet på."""
     return render(
-        request, "credentials.html", snutt=_konsolsnutt(), fynd=None, fyndfel=None
+        request, "credentials.html", snutt=_konsolsnutt(), fynd=None,
+        fyndfel=None, fyndsajter=None,
     )
 
 
@@ -265,6 +266,7 @@ def _rendera_fynd(
     fynd: list | None,
     fyndfel: str | None,
     fyndvarning: str | None = None,
+    fyndsajter: list | None = None,
 ):
     """Bara resultatlistan för htmx, hela sidan utan JavaScript.
 
@@ -274,11 +276,11 @@ def _rendera_fynd(
     if request.headers.get("HX-Request"):
         return render(
             request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel,
-            fyndvarning=fyndvarning, flashes=[],
+            fyndvarning=fyndvarning, fyndsajter=fyndsajter, flashes=[],
         )
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
-        fyndfel=fyndfel, fyndvarning=fyndvarning,
+        fyndfel=fyndfel, fyndvarning=fyndvarning, fyndsajter=fyndsajter,
     )
 
 
@@ -299,8 +301,8 @@ def review_pasted(request: Request, klistrat: str = Form("")):
             "konsolen, eller ett helt JSON-block.",
         )
 
-    fynd, varning = _fynd_fran_konfigurationer(konfigurationer)
-    return _rendera_fynd(request, fynd, None, varning)
+    fynd, varning, sajtrader = _fynd_fran_konfigurationer(konfigurationer)
+    return _rendera_fynd(request, fynd, None, varning, sajtrader)
 
 
 def _konfig_for_titel(credentials: dict, titel: dict) -> dict:
@@ -314,7 +316,9 @@ def _konfig_for_titel(credentials: dict, titel: dict) -> dict:
     }
 
 
-def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str | None]:
+def _fynd_fran_konfigurationer(
+    konfigurationer: list[dict],
+) -> tuple[list, str | None, list]:
     """Bygg listan att kryssa i.
 
     Uppgifterna i texten räcker för att fråga Prenly vilka publikationer
@@ -332,6 +336,7 @@ def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str |
     valda_titlar = {
         (str(c["credentials"].get("site", "")).rstrip("/"), int(c["publication"]["title"]))
         for c in konfigurationer
+        if (c.get("publication") or {}).get("title") is not None
     }
 
     fynd: list[dict] = []
@@ -352,13 +357,16 @@ def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str |
                 titlar = None
 
             if titlar is None:
-                # Falla tillbaka på det som klistrades in.
+                # Falla tillbaka på titlar som fanns i det inklistrade.
+                # Konsolsnutten skickar bara uppgifter, så listan kan bli
+                # tom - då finns inget att välja bland.
                 rader = [
                     (int(c["publication"]["title"]),
                      c.get("folder") or c.get("prefix", "").strip(" -"),
                      True, c)
                     for c in konfigurationer
                     if str(c["credentials"].get("site", "")).rstrip("/") == site
+                    and (c.get("publication") or {}).get("title") is not None
                 ]
             else:
                 rader = [
@@ -387,10 +395,16 @@ def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str |
     varning = None
     if misslyckade:
         varning = (
-            "Kunde inte hämta publikationslistan, visar bara det som klistrades in - "
+            "Kunde inte hämta publikationslistan från Prenly: "
             + "; ".join(misslyckade)
         )
-    return fynd, varning
+    # Sajternas uppgifter går att spara även utan titellista - då kan man
+    # åtminstone lägga in ett förnyat token och hämta listan senare.
+    sajtrader = [
+        {"url": url, "conf": json.dumps({"credentials": credentials}, ensure_ascii=False)}
+        for url, credentials in per_sajt.items()
+    ]
+    return fynd, varning, sajtrader
 
 
 @router.post("/uppgifter/spara")
@@ -433,13 +447,17 @@ async def save_pasted(request: Request):
         for conf in _tolka(alla):
             credentials = conf.get("credentials") or {}
             url = str(credentials.get("site", "")).rstrip("/")
+            if not url:
+                continue
+            # Sajtens uppgifter sparas oavsett - ett block utan titel bär
+            # bara dem, vilket är vad konsolsnutten skickar.
+            site = repo.upsert_site(session, url, credentials)
+            sajter.add(url)
             try:
                 title_id = int(conf["publication"]["title"])
             except (KeyError, TypeError, ValueError):
                 continue
 
-            site = repo.upsert_site(session, url, credentials)
-            sajter.add(url)
             namn = (
                 conf.get("folder") or conf.get("prefix", "").strip(" -")
                 or f"Publikation {title_id}"

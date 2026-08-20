@@ -153,7 +153,7 @@ def test_uppgiftssidan_visar_konsolsnutten(client):
     # Sidan ska visa den riktiga snutten, inte en beskrivning av den.
     assert "PrenlyData" in response.text
     assert "prenlyreadersessiontoken" in response.text
-    assert "prenlyKonfig" in response.text
+    assert "media_host" in response.text
 
 
 def alla_varden(html: str) -> list[str]:
@@ -416,3 +416,67 @@ def test_gamla_lagg_till_sidan_ar_borta(client):
     svar = client.get("/publications/new", follow_redirects=False)
     assert svar.status_code == 303
     assert svar.headers["location"] == "/"
+
+
+BARA_UPPGIFTER = """{
+  "credentials": {
+    "site": "https://etidning.dn.se",
+    "cdn": "",
+    "textalk-auth": "klient",
+    "auth": "sessionstoken"
+  }
+}"""
+
+
+def test_bara_uppgifter_racker(client):
+    """Konsolsnutten skickar inga publikationer - de hämtas från API:t."""
+    svar = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    assert svar.status_code == 200
+    assert "2 publikationer" in svar.text
+    assert "Kundtidning DN" in svar.text
+    assert "Bilagan" in svar.text
+
+
+def test_bara_uppgifter_sparar_sajten(client):
+    granskning = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    svar = client.post(
+        "/uppgifter/spara",
+        data={
+            "valda": valbara(granskning.text),
+            "alla": alla_varden(granskning.text),
+        },
+        follow_redirects=True,
+    )
+    assert "1 sajt sparad" in svar.text
+
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        sajter = repo_module.list_sites(session)
+        assert len(sajter) == 1
+        assert sajter[0].auth == "sessionstoken"
+        assert sajter[0].textalk_auth == "klient"
+        # Alla titlar från API:t hamnade i katalogen.
+        assert len(repo_module.list_publications(session)) == 3
+
+
+def test_uppgifter_utan_titellista_sparar_anda_sajten(client_utan_api):
+    """Går API:t inte att nå ska uppgifterna ändå gå att lägga in."""
+    granskning = client_utan_api.post(
+        "/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER}
+    )
+    assert "Kunde inte hämta publikationslistan" in granskning.text
+
+    svar = client_utan_api.post(
+        "/uppgifter/spara",
+        data={"alla": [BARA_UPPGIFTER], "valda": [BARA_UPPGIFTER]},
+        follow_redirects=True,
+    )
+    assert "1 sajt sparad" in svar.text
+
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        assert len(repo_module.list_sites(session)) == 1

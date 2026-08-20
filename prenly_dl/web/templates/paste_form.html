@@ -1,21 +1,22 @@
 <article id="klistra">
   <h2>Klistra in resultatet</h2>
   <p class="muted">
-    Klistra in ett enskilt JSON-block, eller hela utskriften från konsolen -
-    rubriker och statusrader gör ingenting. Alla konfigurationer i texten
-    plockas ut, så du kan lägga till flera publikationer på en gång.
+    Klistra in det konsolsnutten skrev ut. prenly-dl frågar sedan Prenly
+    vilka publikationer uppgifterna ger tillgång till - du behöver inte
+    veta något publikations-ID.
   </p>
   <p class="muted">
-    Ska du bara förnya uppgifterna för en publikation du redan har räcker
-    dess block: publikationen känns igen på sajt och titel-ID, och får de
-    nya uppgifterna i stället för att läggas till en gång till.
+    Gäller det en sajt du redan har känns den igen på adressen och får de
+    nya uppgifterna, som då gäller alla dess titlar. Äldre
+    konfigurationsfiler med en <code>publication</code>-del fungerar också,
+    och flera på en gång.
   </p>
   <form method="post" action="/uppgifter/granska"
         hx-post="/uppgifter/granska" hx-target="#fynd"
         hx-swap="outerHTML show:#fynd:top"
         hx-indicator="#las-in">
     <textarea name="klistrat" rows="10" required
-      placeholder="--- Tidningen Hemslöjd (titel 4019) ---&#10;{&#10;  &quot;credentials&quot;: { ... },&#10;  &quot;publication&quot;: { &quot;title&quot;: 4019, &quot;limit&quot;: 1 }&#10;}"></textarea>
+      placeholder="{&#10;  &quot;credentials&quot;: {&#10;    &quot;site&quot;: &quot;https://hemslojd.prenly.com&quot;,&#10;    &quot;cdn&quot;: &quot;&quot;,&#10;    &quot;textalk-auth&quot;: &quot;...&quot;,&#10;    &quot;auth&quot;: &quot;...&quot;&#10;  }&#10;}"></textarea>
     <button type="submit" id="las-in">
       Läs in<span class="htmx-indicator"> &hellip;</span>
     </button>
