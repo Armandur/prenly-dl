@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<hgroup>
+  <h1>Publikationer</h1>
+  <p>
+    Utdata: <code>{{ output_dir }}</code> ·
+    Nästa katalogkontroll: {{ next_poll|local_time if next_poll else "inte schemalagd" }}
+  </p>
+</hgroup>
+
+<div class="card-actions" style="margin-bottom:1rem">
+  <a href="/publications/new" role="button">Lägg till publikation</a>
+  <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
+</div>
+
+{% if not rows %}
+  <article>Inga publikationer ännu. <a href="/publications/new">Lägg till den första</a>.</article>
+{% endif %}
+
+<div class="grid-cards">
+{% for row in rows %}
+  {% set pub = row.publication %}
+  <article>
+    <header>
+      <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a>
+      <span class="badge {{ pub.auth_status|status_class }}">{{ status_labels.get(pub.auth_status, pub.auth_status) }}</span>
+      {% if not pub.enabled %}<span class="badge neutral">Pausad</span>{% endif %}
+    </header>
+    <p class="muted">
+      Titel-ID {{ pub.title_id }} · bevakar {{ pub.watch_limit }} senaste<br>
+      {% if row.latest %}
+        Senaste utgåva: {{ row.latest.name }}
+        <span class="badge {{ row.latest.status|status_class }}">{{ row.latest.status }}</span>
+      {% else %}
+        Inga kända utgåvor
+      {% endif %}
+    </p>
+    {% if pub.auth_message %}<p class="muted">{{ pub.auth_message }}</p>{% endif %}
+    <div class="card-actions">
+      <form method="post" action="/publications/{{ pub.id }}/poll"><button class="secondary outline">Kontrollera nu</button></form>
+      <form method="post" action="/publications/{{ pub.id }}/verify"><button class="secondary outline">Testa uppgifter</button></form>
+    </div>
+  </article>
+{% endfor %}
+</div>
+
+<h2>Senaste jobb</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Tid</th><th>Typ</th><th>Status</th><th>Resultat</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td>{{ job.created_at|local_time }}</td>
+      <td>{{ job.type }}</td>
+      <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td>{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">Inga jobb ännu</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

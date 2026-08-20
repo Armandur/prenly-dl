@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<hgroup>
+  <h1>Jobb</h1>
+  <p>Uppdateras automatiskt var femte sekund.</p>
+</hgroup>
+<form method="post" action="/jobs/poll-all" style="margin-bottom:1rem">
+  <button class="secondary">Kontrollera alla nu</button>
+</form>
+<div class="scroll-x">
+<table id="jobs-table">
+  <thead>
+    <tr><th>Tid</th><th>Typ</th><th>Gäller</th><th>Status</th><th>Förlopp</th><th>Resultat</th></tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr data-job="{{ job.id }}">
+      <td>{{ job.created_at|local_time }}</td>
+      <td>{{ job.type }}</td>
+      <td>
+        {% if job.issue_id and issues.get(job.issue_id) %}{{ issues[job.issue_id].name }}
+        {% elif job.publication_id and publications.get(job.publication_id) %}{{ publications[job.publication_id].name }}
+        {% else %}alla{% endif %}
+      </td>
+      <td class="job-status"><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td class="job-progress">
+        {% if job.progress_total %}
+          <progress value="{{ job.progress_done }}" max="{{ job.progress_total }}"></progress>
+          {{ job.progress_done }}/{{ job.progress_total }}
+        {% else %}-{% endif %}
+      </td>
+      <td class="job-result">{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Inga jobb ännu</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const badgeClass = {ok:"ok", done:"ok", queued:"pending", running:"pending", error:"bad", cancelled:"neutral"};
+async function refresh() {
+  const response = await fetch("/api/jobs");
+  if (!response.ok) return;
+  const jobs = await response.json();
+  let changed = false;
+  for (const job of jobs) {
+    const row = document.querySelector(`tr[data-job="${job.id}"]`);
+    if (!row) { changed = true; continue; }
+    const status = row.querySelector(".job-status span");
+    if (status.textContent !== job.status) changed = true;
+    status.textContent = job.status;
+    status.className = "badge " + (badgeClass[job.status] || "neutral");
+    row.querySelector(".job-progress").textContent = job.progress_total
+      ? `${job.progress_done}/${job.progress_total}` : "-";
+    row.querySelector(".job-result").textContent = job.error || job.message || "-";
+  }
+  if (changed) location.reload();
+}
+setInterval(refresh, 5000);
+</script>
+{% endblock %}

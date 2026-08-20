@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="sv" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}prenly-dl{% endblock %}</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul><li><strong><a href="/">prenly-dl</a></strong></li></ul>
+      <ul>
+        <li><a href="/">Översikt</a></li>
+        <li><a href="/jobs">Jobb</a></li>
+        <li><a href="/settings">Inställningar</a></li>
+        {% if auth_enabled %}
+        <li><form method="post" action="/logout" class="inline"><button class="secondary outline">Logga ut</button></form></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {% for flash in flashes %}
+      <article class="flash flash-{{ flash.level }}">{{ flash.text }}</article>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ publication.name }} - prenly-dl{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>{{ publication.name }}</h1>
+  <p>
+    <span class="badge {{ publication.auth_status|status_class }}">{{ status_labels.get(publication.auth_status, publication.auth_status) }}</span>
+    {% if publication.auth_checked_at %}kontrollerad {{ publication.auth_checked_at|local_time }}{% endif %}
+    {% if publication.auth_message %}<br><span class="muted">{{ publication.auth_message }}</span>{% endif %}
+  </p>
+</hgroup>
+
+<div class="card-actions" style="margin-bottom:1rem">
+  <form method="post" action="/publications/{{ publication.id }}/poll"><button>Kontrollera katalogen nu</button></form>
+  <form method="post" action="/publications/{{ publication.id }}/verify"><button class="secondary">Testa uppgifter</button></form>
+</div>
+
+<h2>Utgåvor</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
+  <tbody>
+  {% for issue in issues %}
+    <tr>
+      <td>{{ issue.name }}</td>
+      <td>{{ issue.publication_date or "-" }}</td>
+      <td>
+        <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
+        {% if issue.error %}<br><span class="muted">{{ issue.error }}</span>{% endif %}
+      </td>
+      <td>{{ issue.page_count or "-" }}</td>
+      <td class="muted">{{ issue.file_path or "-" }}</td>
+      <td>
+        <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
+          <input type="hidden" name="force" value="on">
+          <button class="secondary outline">Ladda ner</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Inställningar</h2>
+<form method="post" action="/publications/{{ publication.id }}/edit">
+  <div class="grid">
+    <label>Namn<input name="name" value="{{ publication.name }}" required></label>
+    <label>Sajt<input name="site" value="{{ publication.site }}" required></label>
+  </div>
+  <div class="grid">
+    <label>Prefix på filnamn<input name="prefix" value="{{ publication.prefix }}"></label>
+    <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
+  </div>
+  <div class="grid">
+    <label>Antal senaste utgåvor att bevaka<input type="number" name="watch_limit" min="1" value="{{ publication.watch_limit }}"></label>
+    <label>CDN (tomt = standard)<input name="cdn" value="{{ publication.cdn }}"></label>
+  </div>
+  <label>X-Textalk-Content-Client-Authorize<input name="textalk_auth" value="{{ publication.textalk_auth }}"></label>
+  <label>Sessionstoken (utan "Bearer ")<input name="auth" value="{{ publication.auth }}"></label>
+  <p class="muted">
+    Tokens har begränsad livslängd. Hämta nya med bookmarkleten och klistra in dem här när
+    statusen blir "Utloggad".
+  </p>
+  <label>
+    <input type="checkbox" name="enabled" {% if publication.enabled %}checked{% endif %}>
+    Aktiv (ingår i schemalagd katalogkontroll)
+  </label>
+  <button type="submit">Spara</button>
+</form>
+
+<h2>Jobbhistorik</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Tid</th><th>Typ</th><th>Status</th><th>Resultat</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td>{{ job.created_at|local_time }}</td>
+      <td>{{ job.type }}</td>
+      <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td>{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">Inga jobb ännu</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<details style="margin-top:2rem">
+  <summary>Ta bort publikationen</summary>
+  <form method="post" action="/publications/{{ publication.id }}/delete"
+        onsubmit="return confirm('Ta bort {{ publication.name }} och all dess historik?')">
+    <button class="secondary">Ta bort {{ publication.name }}</button>
+  </form>
+</details>
+{% endblock %}

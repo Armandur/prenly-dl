@@ -1,0 +1,33 @@
+:root { --pico-font-size: 100%; }
+
+.inline { display: inline; margin: 0; }
+.inline button { margin: 0; }
+
+.flash { padding: 0.6rem 1rem; margin-bottom: 1rem; border-left: 4px solid var(--pico-primary); }
+.flash-success { border-color: #2e9e5b; }
+.flash-error { border-color: #c9403f; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 1rem;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+}
+.badge.ok { background: #1d4d33; color: #9fe0b8; }
+.badge.pending { background: #1d3a4d; color: #9fcbe0; }
+.badge.warn { background: #4d411d; color: #e0d29f; }
+.badge.bad { background: #4d1d1d; color: #e09f9f; }
+.badge.neutral { background: #333; color: #ccc; }
+
+.grid-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
+.card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.card-actions form { margin: 0; }
+.card-actions button { margin: 0; padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+
+table { font-size: 0.9rem; }
+.scroll-x { overflow-x: auto; }
+.muted { color: var(--pico-muted-color); font-size: 0.85rem; }
+progress { margin: 0; width: 8rem; }
+
+@media (max-width: 600px) {
+  .card-actions { flex-direction: column; align-items: stretch; }
+  .card-actions button { width: 100%; }
+}
