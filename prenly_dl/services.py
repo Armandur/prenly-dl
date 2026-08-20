@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .api import build_session, get_catalogue_issues, get_context_token, get_titles
 from .config import output_root
+from .covers import fetch_and_cache_cover
 from .db import repository as repo
 from .db.models import (
     AuthStatus,
@@ -42,6 +43,31 @@ def _record_error(session: Session, publication: Publication, error: Exception) 
         repo.set_auth_status(session, publication, AuthStatus.ERROR, str(error))
 
 
+def _status_fran_titlar(
+    session: Session, publication: Publication, titles: list[dict]
+) -> AuthStatus:
+    """Sätt auth-status utifrån titellistan.
+
+    Katalog-API:t svarar även när prenumerationen gått ut, så ett lyckat
+    anrop får inte tolkas som OK. Titellistan är det som avgör: saknas
+    publikationen eller är den inte läsbar hämtas inga utgåvor.
+    """
+    match = next((t for t in titles if t.get("id") == publication.title_id), None)
+    if match is None:
+        repo.set_auth_status(
+            session, publication, AuthStatus.SUBSCRIPTION_ERROR,
+            f"Publikation {publication.title_id} finns inte på {publication.site}",
+        )
+    elif not match.get("user_readable", True):
+        repo.set_auth_status(
+            session, publication, AuthStatus.SUBSCRIPTION_ERROR,
+            "E-tidningen ingår inte i prenumerationen",
+        )
+    else:
+        repo.set_auth_status(session, publication, AuthStatus.OK, None)
+    return AuthStatus(publication.auth_status)
+
+
 def verify_credentials(session: Session, publication: Publication) -> AuthStatus:
     """Kontrollera uppgifterna mot API:t och spara resultatet."""
     http = build_session()
@@ -53,24 +79,7 @@ def verify_credentials(session: Session, publication: Publication) -> AuthStatus
         _record_error(session, publication, error)
         return AuthStatus(publication.auth_status)
 
-    match = next((t for t in titles if t.get("id") == publication.title_id), None)
-    if match is None:
-        repo.set_auth_status(
-            session,
-            publication,
-            AuthStatus.SUBSCRIPTION_ERROR,
-            f"Publikation {publication.title_id} finns inte på {publication.site}",
-        )
-    elif not match.get("user_readable", True):
-        repo.set_auth_status(
-            session,
-            publication,
-            AuthStatus.SUBSCRIPTION_ERROR,
-            "E-tidningen ingår inte i prenumerationen",
-        )
-    else:
-        repo.set_auth_status(session, publication, AuthStatus.OK, None)
-    return AuthStatus(publication.auth_status)
+    return _status_fran_titlar(session, publication, titles)
 
 
 def discover_titles(creds) -> list[dict]:
@@ -90,6 +99,7 @@ def poll_publication(
 
     token = get_context_token(http, creds)
     entries = get_catalogue_issues(http, creds, token, publication.title_id, limit)
+    titles = get_titles(http, creds, token)
 
     new_issues = 0
     queued = 0
@@ -97,11 +107,15 @@ def poll_publication(
         issue, created = repo.upsert_issue(session, publication, entry)
         if created:
             new_issues += 1
+        # Omslaget hämtas oavsett om PDF:en går att ladda ner, så kortet
+        # kan visa titelsidan även för en publikation utan prenumeration.
+        if issue.cover_checksum:
+            fetch_and_cache_cover(http, creds, publication.title_id, issue.cover_checksum)
         if enqueue and issue.status in (IssueStatus.NEW.value, IssueStatus.ERROR.value):
             if repo.enqueue_download(session, issue):
                 queued += 1
 
-    repo.set_auth_status(session, publication, AuthStatus.OK, None)
+    _status_fran_titlar(session, publication, titles)
     logger.info(
         "%s: %d utgåvor i katalogen, %d nya, %d köade",
         publication.name, len(entries), new_issues, queued,

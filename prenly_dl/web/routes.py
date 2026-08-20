@@ -7,11 +7,13 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..api import Credentials
+from ..api import build_session
 from ..config import output_root, timezone_name
+from ..covers import cached_cover_path, fetch_and_cache_cover
 from ..db import repository as repo
 from ..db.models import AuthStatus, Publication
 from ..db.session import get_session
@@ -102,13 +104,10 @@ def index(request: Request):
         publications = repo.list_publications(session)
         jobs = repo.list_jobs(session, limit=10)
         issues = repo.list_issues(session, limit=10)
-        rows = []
-        for publication in publications:
-            pub_issues = repo.list_issues(session, publication.id, limit=1)
-            rows.append({
-                "publication": publication,
-                "latest": pub_issues[0] if pub_issues else None,
-            })
+        rows = [
+            {"publication": publication, "latest": repo.latest_issue(session, publication.id)}
+            for publication in publications
+        ]
     return render(
         request,
         "index.html",
@@ -123,6 +122,29 @@ def index(request: Request):
 # --------------------------------------------------------------------------
 # Publikationer
 # --------------------------------------------------------------------------
+
+
+@router.get("/covers/{publication_id}/{checksum}.jpg")
+def cover_image(publication_id: int, checksum: str):
+    """Servera ett cachat omslag, och hämta det vid första förfrågan.
+
+    Bilden är innehållsadresserad via checksumman, så den kan cachas hårt
+    i webbläsaren.
+    """
+    headers = {"Cache-Control": "public, max-age=604800, immutable"}
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return JSONResponse({"error": "okänd publikation"}, status_code=404)
+        title_id = publication.title_id
+        creds = repo.credentials_for(publication)
+
+    path = cached_cover_path(title_id, checksum)
+    if path is None:
+        path = fetch_and_cache_cover(build_session(), creds, title_id, checksum)
+    if path is None:
+        return JSONResponse({"error": "omslaget kunde inte hämtas"}, status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers=headers)
 
 
 @router.get("/publications/new", response_class=HTMLResponse)
@@ -237,6 +259,7 @@ def publication_detail(request: Request, slug: str):
             flash(request, "Publikationen finns inte", "error")
             return back("/")
         issues = repo.list_issues(session, publication.id, limit=100)
+        latest = issues[0] if issues else None
         jobs = [j for j in repo.list_jobs(session, limit=200)
                 if j.publication_id == publication.id][:20]
     return render(
@@ -244,6 +267,7 @@ def publication_detail(request: Request, slug: str):
         "publication.html",
         publication=publication,
         issues=issues,
+        latest=latest,
         jobs=jobs,
     )
 

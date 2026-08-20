@@ -138,6 +138,12 @@ def upsert_issue(
     return issue, created
 
 
+def latest_issue(session: Session, publication_id: int) -> Issue | None:
+    """Senaste kända utgåvan, oavsett om den hämtats."""
+    issues = list_issues(session, publication_id, limit=1)
+    return issues[0] if issues else None
+
+
 def issues_pending_download(session: Session, publication_id: int) -> list[Issue]:
     return list(
         session.execute(

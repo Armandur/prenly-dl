@@ -1,14 +1,24 @@
 {% extends "base.html" %}
 {% block title %}{{ publication.name }} - prenly-dl{% endblock %}
 {% block content %}
-<hgroup>
-  <h1>{{ publication.name }}</h1>
-  <p>
-    <span class="badge {{ publication.auth_status|status_class }}">{{ status_labels.get(publication.auth_status, publication.auth_status) }}</span>
-    {% if publication.auth_checked_at %}kontrollerad {{ publication.auth_checked_at|local_time }}{% endif %}
-    {% if publication.auth_message %}<br><span class="muted">{{ publication.auth_message }}</span>{% endif %}
-  </p>
-</hgroup>
+<div class="detail-head">
+  {% if latest and latest.cover_checksum %}
+    <img class="cover cover-large"
+         src="/covers/{{ publication.id }}/{{ latest.cover_checksum }}.jpg"
+         alt="Titelsida {{ latest.name }}">
+  {% else %}
+    <span class="cover cover-large cover-missing">Inget omslag</span>
+  {% endif %}
+  <hgroup>
+    <h1>{{ publication.name }}</h1>
+    <p>
+      <span class="badge {{ publication.auth_status|status_class }}">{{ status_labels.get(publication.auth_status, publication.auth_status) }}</span>
+      {% if publication.auth_checked_at %}kontrollerad {{ publication.auth_checked_at|local_time }}{% endif %}
+      {% if publication.auth_message %}<br><span class="muted">{{ publication.auth_message }}</span>{% endif %}
+      <br><span class="muted">Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste</span>
+    </p>
+  </hgroup>
+</div>
 
 <div class="card-actions" style="margin-bottom:1rem">
   <form method="post" action="/publications/{{ publication.id }}/poll"><button>Kontrollera katalogen nu</button></form>

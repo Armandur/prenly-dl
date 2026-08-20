@@ -190,12 +190,21 @@ def get_page_checksums(issue_data: dict) -> dict[str, str]:
 
 
 def download_media(
-    session: requests.Session, creds: Credentials, title_id: int, checksum: str
+    session: requests.Session,
+    creds: Credentials,
+    title_id: int,
+    checksum: str,
+    accept: str = "application/pdf",
 ) -> requests.Response:
-    """Hämta en sida (PDF eller bild) från CDN:en."""
+    """Hämta media från CDN:en.
+
+    CDN:en svarar utifrån Accept-headern: samma checksumma ger en PDF för
+    en sida och en JPEG för ett omslag, så anroparen måste säga vad den
+    vill ha.
+    """
     url = f"{creds.cdn}/api/v2/media/get/{title_id}/{checksum}?h=abc"
     headers = _origin_headers(creds)
-    headers["Accept"] = "application/pdf"
+    headers["Accept"] = accept
     try:
         response = session.get(url, headers=headers, timeout=DEFAULT_TIMEOUT)
     except requests.RequestException as error:

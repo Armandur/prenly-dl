@@ -26,9 +26,40 @@
 }
 
 .grid-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
-.card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.card-actions form { margin: 0; }
-.card-actions button { margin: 0; padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+/* Ankare med role="button" och riktiga <button> ska se lika ut: Picos
+   defaultpadding gäller bara ankaret, så båda måste träffas av regeln. */
+.card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: stretch; }
+.card-actions form { margin: 0; display: flex; }
+.card-actions button,
+.card-actions [role="button"] {
+  margin: 0; padding: 0.35rem 0.8rem; font-size: 0.85rem;
+  line-height: 1.5; white-space: nowrap; text-align: center;
+}
+
+/* Korten är lika höga i sin rad, så knapparna ska ligga i botten oavsett
+   hur mycket text kortet har. */
+.grid-cards > article {
+  display: flex; flex-direction: column; height: 100%; margin: 0;
+}
+.grid-cards > article > .card-body { flex: 1; }
+.grid-cards > article > .card-actions { margin-top: auto; }
+
+.card-head { display: flex; gap: 0.75rem; align-items: flex-start; }
+.card-head .card-title { flex: 1; min-width: 0; }
+
+.cover {
+  width: 60px; height: 82px; object-fit: cover; border-radius: 4px;
+  background: var(--pico-code-background-color); flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.cover-missing {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--pico-muted-border-color); box-shadow: none;
+  font-size: 0.7rem; color: var(--pico-muted-color); text-align: center;
+  padding: 0.2rem;
+}
+.cover-large { width: 140px; height: 190px; border-radius: 6px; }
+.detail-head { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
 
 table { font-size: 0.9rem; }
 .scroll-x { overflow-x: auto; }
@@ -37,5 +68,7 @@ progress { margin: 0; width: 8rem; }
 
 @media (max-width: 600px) {
   .card-actions { flex-direction: column; align-items: stretch; }
-  .card-actions button { width: 100%; }
+  .card-actions form { display: block; }
+  .card-actions button,
+  .card-actions [role="button"] { width: 100%; display: block; }
 }
