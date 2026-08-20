@@ -1,4 +1,6 @@
-<div id="utgavor">
+<div id="utgavor"
+     hx-get="/publications/{{ publication.slug }}/issues?page={{ page }}"
+     hx-trigger="utgavor-andrade from:body" hx-swap="outerHTML">
 <h2>Utgåvor</h2>
 <div class="issues-toolbar">
   <p class="muted">

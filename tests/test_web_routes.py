@@ -287,9 +287,61 @@ def test_alla_titlar_sparas_men_bara_de_valda_aktiveras(client):
         assert utan.enabled is False
 
 
-def test_sparar_utan_val_ger_besked(client):
+def test_sparar_utan_nagot_alls_ger_besked(client):
     svar = client.post("/uppgifter/spara", data={}, follow_redirects=True)
-    assert "Inga publikationer valda" in svar.text
+    assert "Inget att spara" in svar.text
+
+
+def test_bara_uppgifter_utan_att_aktivera_nagot(client):
+    """Att förnya ett token ska inte kräva att man kryssar i något."""
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    svar = client.post(
+        "/uppgifter/spara",
+        data={"alla": alla_varden(granskning.text)},
+        follow_redirects=True,
+    )
+    assert "1 sajt sparad" in svar.text
+
+    with get_session() as session:
+        assert repo_module.list_sites(session)[0].auth == "def"
+        # Titlarna är kända men ingenting bevakas.
+        publikationer = repo_module.list_publications(session)
+        assert len(publikationer) == 3
+        assert not any(p.enabled for p in publikationer)
+
+
+def test_fornyelse_lamnar_befintlig_bevakning_ifred(client):
+    """En ny token ska inte stänga av det man redan bevakar."""
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    client.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
+        follow_redirects=True,
+    )
+    with get_session() as session:
+        aktiva_fore = {p.title_id for p in repo_module.list_publications(session) if p.enabled}
+    assert aktiva_fore
+
+    # Förnya utan att kryssa i något.
+    ny = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "farsk"')
+    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny})
+    svar = client.post(
+        "/uppgifter/spara",
+        data={"alla": alla_varden(granskning2.text)},
+        follow_redirects=True,
+    )
+    assert "bevakningen oförändrad" in svar.text.lower()
+
+    with get_session() as session:
+        assert repo_module.list_sites(session)[0].auth == "farsk"
+        aktiva_efter = {p.title_id for p in repo_module.list_publications(session) if p.enabled}
+    assert aktiva_efter == aktiva_fore
 
 
 def test_fornyade_uppgifter_galler_alla_sajtens_titlar(client):
@@ -509,3 +561,42 @@ def test_sparande_koar_synk_sa_omslagen_finns_direkt(client):
     jobb = client.get("/api/jobs").json()
     assert [j["type"] for j in jobb] == ["site_sync"]
     assert jobb[0]["status"] == "queued"
+
+
+def test_publikationens_knappar_stannar_kvar(client, monkeypatch):
+    """Testa uppgifter tog förut användaren till katalogen."""
+    import prenly_dl.web.routes as routes_module
+
+    monkeypatch.setattr(routes_module, "verify_site", lambda session, site: None)
+    publication_id, slug = _skapa_publikation()
+
+    svar = client.post(
+        f"/publications/{publication_id}/verify", headers={"HX-Request": "true"}
+    )
+    assert svar.status_code == 200
+    assert 'id="pub-detalj"' in svar.text
+    assert "<!doctype html>" not in svar.text.lower()
+    assert "kortbesked" in svar.text
+
+    # Utan JavaScript: tillbaka till publikationen, inte till katalogen.
+    svar = client.post(f"/publications/{publication_id}/verify", follow_redirects=False)
+    assert svar.status_code == 303
+    assert svar.headers["location"] == f"/publications/{slug}"
+
+
+def test_katalogkontroll_uppdaterar_utgavorna(client, monkeypatch):
+    import prenly_dl.web.routes as routes_module
+
+    monkeypatch.setattr(
+        routes_module, "poll_publication",
+        lambda session, publication: {"found": 3, "new": 1, "queued": 1},
+    )
+    publication_id, slug = _skapa_publikation()
+
+    svar = client.post(
+        f"/publications/{publication_id}/poll", headers={"HX-Request": "true"}
+    )
+    assert svar.status_code == 200
+    assert "3 utgåvor i katalogen, 1 nya, 1 köade" in svar.text
+    # Utgåvetabellen ska hämtas om, den kan ha fått nya rader.
+    assert svar.headers.get("HX-Trigger") == "utgavor-andrade"

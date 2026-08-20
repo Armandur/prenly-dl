@@ -444,8 +444,10 @@ async def save_pasted(request: Request):
     form = await request.form()
     valda = form.getlist("valda")
     alla = form.getlist("alla") or valda
-    if not valda:
-        flash(request, "Inga publikationer valda", "error")
+    # Att bara spara uppgifterna är ett giltigt val: man kan vilja förnya
+    # ett token utan att ändra vad som bevakas.
+    if not alla:
+        flash(request, "Inget att spara", "error")
         return back("/uppgifter")
 
     def _tolka(rader):
@@ -512,6 +514,8 @@ async def save_pasted(request: Request):
         delar.append(f"{nya} nya titlar i katalogen")
     if aktiverade:
         delar.append(f"{aktiverade} aktiverade")
+    if not aktiverade and not nya:
+        delar.append("bevakningen oförändrad")
     delar.append("hämtar omslag i bakgrunden")
     flash(request, ", ".join(delar).capitalize(), "success")
     return back("/katalog")
@@ -656,8 +660,46 @@ def jump_to_year(request: Request, slug: str, ar: str = ""):
     return svar
 
 
+def _publikationsfragment(request: Request, publication_id: int, meddelande: str):
+    """Rendera om publikationens huvud för htmx, annars tillbaka till sidan."""
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/")
+        slug = publication.slug
+        latest = repo.latest_issue(session, publication.id)
+        if not request.headers.get("HX-Request"):
+            return None, slug
+        svar = render(
+            request, "publication_head.html", publication=publication,
+            latest=latest, kortmeddelande=meddelande, flashes=[],
+        )
+    return svar, slug
+
+
+@router.post("/publications/{publication_id}/verify")
+def verify_publication(request: Request, publication_id: int):
+    """Testa sajtens uppgifter, men stanna kvar på publikationen."""
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/")
+        status = verify_site(session, publication.site)
+        besked = (
+            "Uppgifterna fungerar"
+            if status is AuthStatus.OK
+            else publication.site.auth_message or "Uppgifterna gäller inte längre"
+        )
+    svar, slug = _publikationsfragment(request, publication_id, besked)
+    if svar is not None:
+        return svar
+    flash(request, besked, "success" if status is AuthStatus.OK else "error")
+    return back(f"/publications/{slug}")
+
+
 @router.post("/publications/{publication_id}/poll")
 def poll_now(request: Request, publication_id: int):
+    fel = False
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is None:
@@ -666,13 +708,18 @@ def poll_now(request: Request, publication_id: int):
         try:
             result = poll_publication(session, publication)
         except PrenlyError as error:
-            flash(request, f"Katalogkontrollen misslyckades: {error}", "error")
-            return back(f"/publications/{slug}")
-    flash(
-        request,
-        f"{result['found']} utgåvor i katalogen, {result['new']} nya, {result['queued']} köade",
-        "success",
-    )
+            besked, fel = f"Katalogkontrollen misslyckades: {error}", True
+        else:
+            besked = (
+                f"{result['found']} utgåvor i katalogen, {result['new']} nya, "
+                f"{result['queued']} köade"
+            )
+    svar, slug = _publikationsfragment(request, publication_id, besked)
+    if svar is not None:
+        # Utgåvetabellen kan ha fått nya rader, så den byts ut på köpet.
+        svar.headers["HX-Trigger"] = "utgavor-andrade"
+        return svar
+    flash(request, besked, "error" if fel else "success")
     return back(f"/publications/{slug}")
 
 

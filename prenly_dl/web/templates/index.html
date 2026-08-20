@@ -43,16 +43,16 @@
           <span class="cover cover-missing">Inget omslag</span>
         {% endif %}
         <div class="card-title">
-          <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a><br>
-          {# Läsrätten hör till titeln, uppgifterna till sajten. #}
-          {% if not pub.readable %}
-            <span class="badge warn">Ingen läsrätt</span>
-          {% endif %}
-          {% if pub.site.auth_status != "ok" %}
-            <span class="badge {{ pub.site.auth_status|status_class }}">
-              {{ status_labels.get(pub.site.auth_status, pub.site.auth_status) }}
-            </span>
-          {% endif %}
+          <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a>
+          {# Läsrätten hör till titeln, uppgifterna till sajten. Märkningen
+             visas bara när något är fel - annars säger den ingenting. #}
+          {%- set visa_lasratt = not pub.readable %}
+          {%- set visa_sajt = pub.site.auth_status != "ok" %}
+          {%- if visa_lasratt or visa_sajt %}<br>{% endif %}
+          {%- if visa_lasratt %}<span class="badge warn">Ingen läsrätt</span>{% endif %}
+          {%- if visa_sajt %}
+            <span class="badge {{ pub.site.auth_status|status_class }}">{{ status_labels.get(pub.site.auth_status, pub.site.auth_status) }}</span>
+          {%- endif %}
         </div>
       </div>
       <p class="muted">
