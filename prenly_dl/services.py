@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -123,8 +124,10 @@ def poll_publication(
     return {"found": len(entries), "new": new_issues, "queued": queued}
 
 
-# Hur många katalogposter som hämtas i taget när användaren bläddrar bakåt.
-CATALOGUE_CHUNK = 20
+# Hur många katalogposter som hämtas i taget. API:t kapar limit vid 100,
+# men offset går djupt - en dagstidning har flera tusen utgåvor i arkivet,
+# så det lönar sig att ta största tillåtna bit per anrop.
+CATALOGUE_CHUNK = 100
 
 
 def _spara_katalogpost(
@@ -138,7 +141,10 @@ def _spara_katalogpost(
 
 
 def ensure_catalogue_depth(
-    session: Session, publication: Publication, behovs: int
+    session: Session,
+    publication: Publication,
+    behovs: int,
+    progress: Callable[[int, int], None] | None = None,
 ) -> int:
     """Se till att minst `behovs` utgåvor är kända, genom att bläddra bakåt.
 
@@ -181,6 +187,9 @@ def ensure_catalogue_depth(
             publication.catalogue_complete = True
         session.add(publication)
         session.commit()
+        if progress:
+            kanda = repo.count_issues(session, publication.id)
+            progress(kanda, kanda if publication.catalogue_complete else behovs)
 
     if nya:
         logger.info("%s: hämtade %d äldre utgåvor ur katalogen", publication.name, nya)
@@ -235,9 +244,15 @@ def run_catalogue_job(session: Session, job: Job) -> str:
         raise PrenlyError("Jobbet saknar publikation")
 
     innan = repo.count_issues(session, publication.id)
+    job_id = job.id
+
+    def progress(gjort: int, totalt: int) -> None:
+        repo.update_job_progress(job_id, gjort, totalt)
+
     # Ett tak som ligger långt över vad API:t levererar, så loopen alltid
-    # slutar på catalogue_complete och inte på taket.
-    nya = ensure_catalogue_depth(session, publication, behovs=100_000)
+    # slutar på catalogue_complete och inte på taket. En dagstidning har
+    # flera tusen utgåvor, så förloppet är värt att visa.
+    nya = ensure_catalogue_depth(session, publication, 100_000, progress=progress)
     totalt = repo.count_issues(session, publication.id)
     return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
 

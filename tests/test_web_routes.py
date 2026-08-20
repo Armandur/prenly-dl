@@ -138,3 +138,12 @@ def test_htmx_polling_far_204_i_stallet_for_inloggningssidan(temp_env, monkeypat
         )
         assert response.status_code == 204
         assert "password" not in response.text.lower()
+
+
+def test_uppgiftssidan_visar_konsolsnutten(client):
+    response = client.get("/uppgifter")
+    assert response.status_code == 200
+    # Sidan ska visa den riktiga snutten, inte en beskrivning av den.
+    assert "PrenlyData" in response.text
+    assert "prenlyreadersessiontoken" in response.text
+    assert "prenlyKonfig" in response.text

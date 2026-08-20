@@ -82,12 +82,26 @@ Uppgifterna har begränsad livslängd och behöver förnyas då och då. När en
 publikation får statusen "Utloggad" i webbui:t:
 
 1. Logga in på tidningens läsarsida i webbläsaren.
-2. Kör bookmarkleten i `bookmarklet.html`, eller hämta värdena för hand:
-   - `auth`: `localStorage['prenlyreadersessiontoken']`, utan `Bearer `.
-   - `textalk-auth`: DevTools → Network → en `api/v2`-request →
-     Request Headers → `X-Textalk-Content-Client-Authorize`.
-   - `cdn`: behövs bara om sajten inte använder `https://mediacdn.prenly.com`.
-3. Klistra in värdena på publikationens sida och tryck "Testa uppgifter".
+2. Öppna `/uppgifter` i prenly-dl, kopiera konsolsnutten och kör den i
+   webbläsarens konsol (F12 → Console) på läsarsidan.
+3. Klistra in JSON-blocket under "Lägg till publikation", eller klistra in
+   de enskilda värdena på publikationens sida och tryck "Testa uppgifter".
+
+Snutten läser klientnyckeln ur sidans egen `PrenlyData`-konfiguration och
+sessionstoken ur `localStorage`, och frågar sedan Prenly vilka publikationer
+kontot kan läsa. Ingen letning i Network-fliken, och publikationens ID
+behöver inte vara känt i förväg.
+
+Säger snutten att en publikation inte är läsbar stämmer uppgifterna, men
+prenumerationen täcker inte den titeln.
+
+### Vad arkivet innehåller
+
+Katalogen kapar `limit` vid 100 poster per anrop, men `offset` går djupt -
+hur långt bakåt beror på utgivaren. Tidningen Ångermanland ger över 2000
+utgåvor tillbaka till 2019, medan Dagens Nyheter tar slut efter 31. Knappen
+"Hämta hela katalogen" på publikationssidan hämtar allt som finns och kör
+som ett jobb, eftersom det kan bli många anrop.
 
 ## Utveckling
 

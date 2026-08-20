@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>prenly-dl: hämta inloggningsuppgifter</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto;
+           padding: 0 20px; background: #f5f5f5; color: #222; line-height: 1.55; }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px;
+          overflow-x: auto; font-size: 12px; line-height: 1.5; }
+    .note { background: #fff3cd; border-left: 4px solid #f0a500; padding: 10px 14px;
+            border-radius: 0 4px 4px 0; font-size: 14px; margin: 16px 0; }
+    ol li { margin-bottom: 6px; }
+    button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #999;
+             background: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>prenly-dl: hämta inloggningsuppgifter</h1>
+  <p>
+    Kör snutten nedan i webbläsarens konsol på tidningens läsarsida. Den skriver ut
+    en färdig konfiguration per publikation som ditt konto kan läsa.
+  </p>
+
+  <h2>Gör så här</h2>
+  <ol>
+    <li>Logga in på tidningens läsarsida i webbläsaren.</li>
+    <li>Öppna utvecklarverktygen med F12 och gå till fliken <strong>Console</strong>.</li>
+    <li>Klistra in koden nedan och tryck Enter.</li>
+    <li>
+      Kopiera JSON-blocket för den publikation du vill ha, eller kör
+      <code>prenlyKonfig()</code> för att kopiera det första till urklipp.
+    </li>
+  </ol>
+
+  <div class="note">
+    Snutten läser klientnyckeln ur sidans egen <code>PrenlyData</code>-konfiguration
+    och sessionstoken ur <code>localStorage</code>, och frågar sedan Prenly vilka
+    publikationer kontot kan läsa. Du behöver alltså varken leta i Network-fliken
+    efter <code>X-Textalk-Content-Client-Authorize</code> eller känna till
+    publikationens ID i förväg.
+  </div>
+
+  <p><button id="kopiera">Kopiera koden</button></p>
+  <pre><code id="snutt">/*
+ * prenly-dl: hämta inloggningsuppgifter från en Prenly-läsare.
+ *
+ * Klistra in i webbläsarens konsol (F12) på tidningens läsarsida när du är
+ * inloggad. Skriver ut en färdig konfiguration per publikation som kontot
+ * kan läsa - inklusive textalk-auth, som annars måste grävas fram ur
+ * Network-fliken.
+ *
+ * Allt utom sessionstoken ligger i sidans egen PrenlyData-global:
+ * PrenlyData.client.authToken är klientnyckeln och PrenlyData.media_host
+ * är den CDN sajten använder.
+ */
+(async () =&gt; {
+  const rubrik = &quot;prenly-dl&quot;;
+  const fel = (text) =&gt; console.error(`%c${rubrik}%c ${text}`,
+    &quot;background:#c9403f;color:#fff;padding:2px 6px;border-radius:3px&quot;, &quot;&quot;);
+  const info = (text) =&gt; console.log(`%c${rubrik}%c ${text}`,
+    &quot;background:#0e639c;color:#fff;padding:2px 6px;border-radius:3px&quot;, &quot;&quot;);
+
+  const data = window.PrenlyData;
+  if (!data || !data.client) {
+    fel(&quot;Hittade ingen PrenlyData på sidan. Kör snutten på tidningens läsarsida, inte på en inloggningssida.&quot;);
+    return;
+  }
+
+  const textalkAuth = data.client.authToken;
+  const auth = (localStorage.getItem(&quot;prenlyreadersessiontoken&quot;) || &quot;&quot;).replace(/^Bearer /, &quot;&quot;);
+  const site = location.origin;
+  const mediaHost = (data.media_host || &quot;&quot;).replace(/\/+$/, &quot;&quot;);
+  const apiUrl = (data.context_token &amp;&amp; data.context_token.api_url) || &quot;https://apicdn.prenly.com&quot;;
+
+  if (!textalkAuth) {
+    fel(&quot;PrenlyData.client.authToken saknas - sidan kan ha ändrat format.&quot;);
+    return;
+  }
+  if (!auth) {
+    fel(&quot;Ingen sessionstoken i localStorage. Logga in på tidningen först och kör om snutten.&quot;);
+    return;
+  }
+
+  const huvuden = {
+    &quot;Accept&quot;: &quot;*/*&quot;,
+    &quot;Content-Type&quot;: &quot;application/json-rpc&quot;,
+    &quot;X-Requested-With&quot;: &quot;XMLHttpRequest&quot;,
+    &quot;X-Textalk-Content-Client-Authorize&quot;: textalkAuth,
+    &quot;X-Textalk-Content-Product-Type&quot;: &quot;webapp&quot;,
+    &quot;Authorization&quot;: `Bearer ${auth}`,
+  };
+
+  let titlar;
+  try {
+    const tokenSvar = await fetch(
+      &quot;https://content.textalk.se/api/web-reader/v1/context-token&quot;, { headers: huvuden });
+    if (!tokenSvar.ok) throw new Error(`context-token gav ${tokenSvar.status}`);
+    const { token } = await tokenSvar.json();
+    const titelSvar = await fetch(
+      `${apiUrl}/api/web-reader/v1/titles?context_token=${token}`);
+    if (!titelSvar.ok) throw new Error(`titles gav ${titelSvar.status}`);
+    titlar = await titelSvar.json();
+  } catch (error) {
+    fel(`Kunde inte hämta publikationslistan: ${error.message}`);
+    return;
+  }
+
+  // Standard-CDN behöver inte anges i konfigurationen.
+  const cdn = mediaHost === &quot;https://mediacdn.prenly.com&quot; ? &quot;&quot; : mediaHost;
+  const credentials = { site, cdn, &quot;textalk-auth&quot;: textalkAuth, auth };
+
+  // Publikationsnamn kan innehålla tecken som inte fungerar i ett filnamn,
+  // till exempel &quot;TÅ/ÖA Bilaga&quot;.
+  const filnamnssakert = (text) =&gt;
+    text.replace(/[&lt;&gt;:&quot;/\\|?*\x00-\x1f]/g, &quot;-&quot;).trim().replace(/^\.+|\.+$/g, &quot;&quot;);
+
+  const konfig = (titel) =&gt; ({
+    credentials,
+    publication: { title: titel.id, limit: 1 },
+    prefix: `${filnamnssakert(titel.name)} - `,
+    folder: filnamnssakert(titel.name),
+  });
+
+  const lasbara = titlar.filter((t) =&gt; t.user_readable);
+  const ovriga = titlar.filter((t) =&gt; !t.user_readable);
+
+  info(`${titlar.length} publikationer på ${site}, ${lasbara.length} läsbara med det här kontot.`);
+
+  // En tabell först: sajter som DN och Ångermanland listar trettio titlar,
+  // och då är överblicken viktigare än trettio JSON-block.
+  console.table(titlar.map((t) =&gt; ({
+    id: t.id, namn: t.name, läsbar: t.user_readable ? &quot;ja&quot; : &quot;nej&quot;,
+  })));
+
+  if (!lasbara.length) {
+    fel(&quot;Kontot kan inte läsa någon publikation på den här sajten. &quot;
+      + &quot;Uppgifterna stämmer, men prenumerationen täcker ingen av titlarna.&quot;);
+    return;
+  }
+
+  for (const titel of lasbara) {
+    console.log(`\n--- ${titel.name} (titel ${titel.id}) ---\n${JSON.stringify(konfig(titel), null, 2)}`);
+  }
+
+  // Ett anrop åt gången: kopiering kräver att sidan har fokus.
+  window.prenlyKonfig = (titelId) =&gt; {
+    const vald = titelId ? lasbara.find((t) =&gt; t.id === Number(titelId)) : lasbara[0];
+    if (!vald) {
+      fel(`Ingen läsbar publikation med id ${titelId}.`);
+      return;
+    }
+    const text = JSON.stringify(konfig(vald), null, 2);
+    navigator.clipboard.writeText(text).then(
+      () =&gt; info(`Kopierade konfigurationen för ${vald.name}. Klistra in den i Lägg till publikation.`),
+      () =&gt; console.log(text),
+    );
+  };
+
+  info(&quot;Kör prenlyKonfig() för att kopiera den första, eller prenlyKonfig(TITEL_ID) för en annan.&quot;);
+})();
+</code></pre>
+
+  <script>
+    document.getElementById("kopiera").addEventListener("click", async (event) => {
+      const knapp = event.currentTarget;
+      try {
+        await navigator.clipboard.writeText(document.getElementById("snutt").textContent);
+        knapp.textContent = "Kopierat";
+      } catch {
+        knapp.textContent = "Markera koden och kopiera själv";
+      }
+      setTimeout(() => { knapp.textContent = "Kopiera koden"; }, 2500);
+    });
+  </script>
+</body>
+</html>

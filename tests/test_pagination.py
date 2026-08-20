@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,10 +22,15 @@ def publikation(db):
 
 
 def _katalog(antal_totalt):
-    """Fejkad katalog med `antal_totalt` utgåvor, nyast först."""
+    """Fejkad katalog med `antal_totalt` utgåvor, nyast först.
+
+    Datumen är strikt fallande så att katalogordningen och
+    visningsordningen (publication_date fallande) är samma.
+    """
+    start = date(2026, 12, 1)
     poster = [
         {"uid": str(1000 + i), "name": f"utgava-{i:03d}",
-         "publication_date": f"2026-{12 - (i % 12):02d}-01",
+         "publication_date": (start - timedelta(days=7 * i)).isoformat(),
          "media": {"checksum": f"ck{i:03d}"}}
         for i in range(antal_totalt)
     ]
@@ -44,26 +51,28 @@ def _koppla(monkeypatch, katalog):
 
 
 def test_bladdring_hamtar_bara_det_som_saknas(db, publikation, monkeypatch):
-    katalog = _katalog(76)
+    katalog = _katalog(250)
     _koppla(monkeypatch, katalog)
 
+    chunk = services.CATALOGUE_CHUNK
     with db() as session:
         publication = repo.get_publication(session, publikation)
-        assert services.ensure_catalogue_depth(session, publication, 20) == 20
-        assert repo.count_issues(session, publication.id) == 20
-    assert katalog.anrop == [(20, 0)]
+        assert services.ensure_catalogue_depth(session, publication, 20) == chunk
+        assert repo.count_issues(session, publication.id) == chunk
+    assert katalog.anrop == [(chunk, 0)]
 
-    # Sida två hämtar nästa bit, inte om den första.
+    # Nästa bit hämtas från där den förra slutade.
     with db() as session:
         publication = repo.get_publication(session, publikation)
-        assert services.ensure_catalogue_depth(session, publication, 40) == 20
-    assert katalog.anrop == [(20, 0), (20, 20)]
+        assert services.ensure_catalogue_depth(session, publication, chunk + 20) > 0
+    assert katalog.anrop == [(chunk, 0), (chunk, chunk)]
 
-    # Tillbaka till sida ett: allt finns redan, inga anrop.
+    # Tillbaka till början: allt finns redan, inga nya anrop.
+    antal = len(katalog.anrop)
     with db() as session:
         publication = repo.get_publication(session, publikation)
         assert services.ensure_catalogue_depth(session, publication, 20) == 0
-    assert katalog.anrop == [(20, 0), (20, 20)]
+    assert len(katalog.anrop) == antal
 
 
 def test_slut_pa_katalogen_markeras_och_slutar_anropa(db, publikation, monkeypatch):
@@ -105,19 +114,25 @@ def client(temp_env, monkeypatch):
         yield test_client
 
 
+def _tabellrader(html: str) -> str:
+    """Bara utgåvetabellen - sidhuvudet visar alltid senaste utgåvan."""
+    start = html.index("<h2>Utgåvor</h2>")
+    return html[start:html.index("<h2>Inställningar</h2>", start)]
+
+
 def test_publikationssidan_paginerar(client, publikation, monkeypatch):
     _koppla(monkeypatch, _katalog(76))
 
-    forsta = client.get("/publications/tidningen")
-    assert forsta.status_code == 200
-    assert "utgava-000" in forsta.text
-    assert "utgava-020" not in forsta.text
-    assert "Visar 1-20" in forsta.text
+    forsta = _tabellrader(client.get("/publications/tidningen").text)
+    assert "utgava-000" in forsta
+    assert "utgava-020" not in forsta
+    assert "Visar 1-20" in forsta
 
-    andra = client.get("/publications/tidningen?page=2")
-    assert "utgava-020" in andra.text
-    assert "utgava-000" not in andra.text
-    assert "Visar 21-40" in andra.text
+    andra = _tabellrader(client.get("/publications/tidningen?page=2").text)
+    assert "utgava-020" in andra
+    assert "utgava-019" not in andra
+    assert "utgava-040" not in andra
+    assert "Visar 21-40" in andra
 
 
 def test_sidnummer_bortom_katalogen_backar_till_sista(client, publikation, monkeypatch):

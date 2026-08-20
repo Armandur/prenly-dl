@@ -161,6 +161,15 @@ def new_publication_form(request: Request):
     return render(request, "publication_form.html", publication=None, titles=None)
 
 
+@router.get("/uppgifter", response_class=HTMLResponse)
+def credentials_help(request: Request):
+    """Konsolsnutten som plockar ut uppgifterna ur en Prenly-läsare."""
+    snutt = (Path(__file__).parent / "static" / "konsolsnutt.js").read_text(
+        encoding="utf-8"
+    )
+    return render(request, "credentials.html", snutt=snutt)
+
+
 def _credentials_from_form(site: str, textalk_auth: str, auth: str, cdn: str):
     return Credentials(site=site, textalk_auth=textalk_auth, auth=auth, cdn=cdn)
 
