@@ -161,6 +161,7 @@ pre.job-error { white-space: pre-wrap; word-break: break-word; margin: 0.5rem 0 
 table { font-size: 0.9rem; }
 table td a[href^='/jobs/'] { white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
+.site-table { min-width: 60rem; }
 .muted { color: var(--pico-muted-color); font-size: 0.85rem; }
 progress { margin: 0; width: 8rem; }
 
@@ -169,6 +170,7 @@ progress { margin: 0; width: 8rem; }
   header nav { flex-wrap: wrap; }
   header nav ul { flex-wrap: wrap; padding: 0; }
   header nav li { padding: 0.25rem 0.5rem; }
+  .credentials-title { font-size: 1.75rem; }
   .stat-card { flex-basis: 8rem; min-width: 7rem; padding: 0.75rem 0.9rem; }
   .stat-value { font-size: 1.35rem; }
   .card-actions { flex-direction: column; align-items: stretch; }

@@ -45,8 +45,8 @@
       <td class="cover-cell">
         {% if issue.cover_checksum %}
           <img class="cover cover-small" loading="lazy"
-               src="/covers/{{ publication.id }}/{{ issue.cover_checksum }}.jpg"
-               data-lightbox-src="/covers/{{ publication.id }}/{{ issue.cover_checksum }}.jpg?stor=1"
+               src="/covers/{{ publication.title_id }}/{{ issue.cover_checksum }}.jpg"
+               data-lightbox-src="/covers/{{ publication.title_id }}/{{ issue.cover_checksum }}.jpg?stor=1"
                alt="Omslag {{ issue.name }}">
         {% else %}
           <span class="cover cover-small cover-missing"></span>

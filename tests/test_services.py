@@ -9,6 +9,7 @@ def _publikation(session):
     site = repo.upsert_site(
         session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
     )
+    site.auth_status = "ok"
     publication, _ = repo.upsert_publication(session, site, 1, "Tidningen")
     return publication
 
@@ -160,7 +161,7 @@ def test_forhandsgranskning_andrar_inte_utgavans_status_eller_filfalt(
         )
         issue_id = issue.id
         path = services.build_issue_preview(
-            repo.credentials_for(publication),
+            repo.credentials_for_site(publication.accesses[0].site),
             publication.title_id,
             issue.uid,
             issue.id,
@@ -238,3 +239,54 @@ def test_sajtsynk_hamtar_omslag_aven_utan_lasratt(db, monkeypatch):
     with db() as session:
         for publication in repo.list_publications(session):
             assert repo.latest_issue(session, publication.id) is not None
+
+
+def test_nedladdning_av_delad_titel_valjer_sajten_med_lasratt(db, monkeypatch):
+    from prenly_dl.db.models import AuthStatus
+
+    with db() as session:
+        utan = repo.upsert_site(session, "https://utan.se", {"auth": "utan"})
+        med = repo.upsert_site(session, "https://med.se", {"auth": "med"})
+        repo.set_site_status(session, utan, AuthStatus.OK)
+        repo.set_site_status(session, med, AuthStatus.OK)
+        publication, _ = repo.upsert_publication(
+            session, utan, 259, "Expressen", readable=False
+        )
+        repo.upsert_title_access(session, med, 259, "Expressen", readable=True)
+        issue, _ = repo.upsert_issue(session, publication, {"uid": "1", "name": "x"})
+        repo.enqueue_download(session, issue)
+
+    anvand_sajt = []
+
+    def _hamta(session, creds, title_id, uid, output_dir, **kwargs):
+        anvand_sajt.append(creds.site)
+        return downloader.DownloadResult(output_dir / "x.pdf", 1)
+
+    monkeypatch.setattr(services, "download_issue", _hamta)
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    assert anvand_sajt == ["https://med.se"]
+
+
+def test_nedladdningsjobb_ger_begripligt_fel_utan_lasbar_sajt(db):
+    from prenly_dl.db.models import AuthStatus
+
+    with db() as session:
+        site = repo.upsert_site(session, "https://utan.se", {"auth": "utan"})
+        repo.set_site_status(session, site, AuthStatus.OK)
+        publication, _ = repo.upsert_publication(
+            session, site, 259, "Expressen", readable=False
+        )
+        issue, _ = repo.upsert_issue(session, publication, {"uid": "1", "name": "x"})
+        repo.enqueue_download(session, issue)
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    with db() as session:
+        job = repo.list_jobs(session)[0]
+        assert job.status == JobStatus.ERROR.value
+        assert job.error == (
+            "Ingen av dina inloggningsuppgifter ger läsrätt till Expressen"
+        )

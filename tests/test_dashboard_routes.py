@@ -23,6 +23,7 @@ def _publikation():
         site = repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        site.auth_status = "ok"
         publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
         publication.enabled = True
         session.add(publication)
@@ -114,9 +115,9 @@ def test_statistikkorten(client):
 def test_oversikten_visar_bara_bevakade(client):
     from prenly_dl.db.session import get_session
 
-    publication_id = _publikation()
+    _publikation()
     with get_session() as session:
-        site = repo.get_site(session, repo.get_publication(session, publication_id).site_id)
+        site = repo.list_sites(session)[0]
         inaktiv, _ = repo.upsert_publication(session, site, 5000, "Inte bevakad")
         inaktiv.enabled = False
         session.add(inaktiv)
@@ -133,7 +134,7 @@ def test_omslag_for_okand_publikation_ger_404(client):
 
 
 def test_omslag_hamtas_och_cachas(client, monkeypatch):
-    publication_id = _publikation()
+    _publikation()
     import prenly_dl.web.routes as routes_module
 
     hamtningar = []
@@ -148,18 +149,18 @@ def test_omslag_hamtas_och_cachas(client, monkeypatch):
 
     monkeypatch.setattr(routes_module, "fetch_and_cache_cover", _fejkad)
 
-    first = client.get(f"/covers/{publication_id}/abc123.jpg")
+    first = client.get("/covers/4019/abc123.jpg")
     assert first.status_code == 200
     assert first.headers["content-type"] == "image/jpeg"
 
     # Andra anropet ska serveras ur cachen utan ny hämtning.
-    second = client.get(f"/covers/{publication_id}/abc123.jpg")
+    second = client.get("/covers/4019/abc123.jpg")
     assert second.status_code == 200
     assert hamtningar == ["abc123"]
 
 
 def test_stort_omslag_hamtas_och_cachas_separat(client, monkeypatch):
-    publication_id = _publikation()
+    _publikation()
     import prenly_dl.web.routes as routes_module
 
     hamtningar = []
@@ -174,7 +175,7 @@ def test_stort_omslag_hamtas_och_cachas_separat(client, monkeypatch):
 
     monkeypatch.setattr(routes_module, "fetch_and_cache_cover", _fejkad)
 
-    url = f"/covers/{publication_id}/abc123.jpg?stor=1"
+    url = "/covers/4019/abc123.jpg?stor=1"
     first = client.get(url)
     assert first.status_code == 200
     assert first.headers["content-type"] == "image/jpeg"
@@ -203,7 +204,7 @@ def test_omslagsmallarna_pekar_pa_stor_variant(client):
         slug = publication.slug
 
     attribut = (
-        f'data-lightbox-src="/covers/{publication_id}/omslag123.jpg?stor=1"'
+        'data-lightbox-src="/covers/4019/omslag123.jpg?stor=1"'
     )
     oversikt = client.get("/")
     katalog = client.get("/katalog")
@@ -232,6 +233,7 @@ def test_kortet_visar_storlek_pa_disk(temp_env, client):
         site = repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        site.auth_status = "ok"
         publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
         publication.folder = "Tidningen"
         publication.enabled = True
@@ -260,6 +262,7 @@ def _sajt_och_titlar(client):
         site = repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        site.auth_status = "ok"
         pub, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
         pub.enabled = False
         session.add(pub)
@@ -273,13 +276,18 @@ def test_katalogatgarder_svarar_med_sajtkortet_for_htmx(client, monkeypatch):
     monkeypatch.setattr(routes_module, "verify_site", lambda session, site: None)
     site_id, pub_id = _sajt_och_titlar(client)
 
-    for url in (f"/katalog/{pub_id}/toggle", f"/sites/{site_id}/sync"):
-        svar = client.post(url, data={"aktiv": "on"}, headers={"HX-Request": "true"})
-        assert svar.status_code == 200, url
-        # Bara kortet, inte hela sidan.
-        assert f'id="sajt-{site_id}"' in svar.text, url
-        assert "<!doctype html>" not in svar.text.lower(), url
-        assert "kortbesked" in svar.text, url
+    toggle = client.post(
+        f"/katalog/{pub_id}/toggle", data={"aktiv": "on"},
+        headers={"HX-Request": "true"},
+    )
+    assert toggle.status_code == 200
+    assert 'id="katalogtabell"' in toggle.text
+    assert "<!doctype html>" not in toggle.text.lower()
+
+    synk = client.post(f"/sites/{site_id}/sync", headers={"HX-Request": "true"})
+    assert synk.status_code == 200
+    assert f'id="sajt-{site_id}"' in synk.text
+    assert "kortbesked" in synk.text
 
 
 def test_katalogatgarder_utan_javascript_gar_tillbaka(client):
@@ -305,52 +313,36 @@ def test_toggle_slar_pa_och_av(client):
         assert repo.get_publication(session, pub_id).enabled is False
 
 
-def test_kortets_raknare_foljer_med_nar_titlar_slas_pa_och_av(client, monkeypatch):
-    """Rubrikens "N bevakas" räknas om i det fragment som byts in."""
-    import re
-
+def test_katalogen_deduplicerar_titel_och_visar_sajtvis_lasratt(client):
+    """Samma globala titel renderas en gång med båda åtkomstraderna."""
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
-        site = repo.upsert_site(
-            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
-        )
-        for title_id, namn in ((1, "Ettan"), (2, "Tvåan"), (3, "Trean")):
-            pub, _ = repo.upsert_publication(session, site, title_id, namn)
-            pub.enabled = False
-            session.add(pub)
-        session.flush()
-        site_id = site.id
-        pub_ids = [p.id for p in repo.list_publications(session, site_id=site_id)]
+        dalarna = repo.upsert_site(session, "https://dalarna.se", {"auth": "d"})
+        angermanland = repo.upsert_site(session, "https://angermanland.se", {"auth": "a"})
+        dalarna.auth_status = angermanland.auth_status = "ok"
+        repo.upsert_title_access(session, dalarna, 259, "Expressen", readable=False)
+        repo.upsert_title_access(session, angermanland, 259, "Expressen", readable=True)
 
-    def bevakas(html: str) -> int:
-        m = re.search(r"(\d+) bevakas", html)
-        return int(m.group(1)) if m else -1
+    svar = client.get("/katalog")
+    assert svar.status_code == 200
+    assert svar.text.count(">Expressen</a>") == 1
+    assert "https://dalarna.se: Ingen läsrätt" in svar.text
+    assert "https://angermanland.se: Läsrätt" in svar.text
 
-    assert bevakas(client.get("/katalog").text) == 0
 
-    svar = client.post(
-        f"/katalog/{pub_ids[0]}/toggle",
-        data={"aktiv": "on"},
-        headers={"HX-Request": "true"},
-    )
-    assert bevakas(svar.text) == 1
-    # Bara märkningen, inte kolumnrubriken som heter likadant.
-    assert svar.text.count('<span class="badge ok">Bevakas</span>') == 1
+def test_uppgifter_listar_sajt_med_antal_titlar(client):
+    from prenly_dl.db.session import get_session
 
-    svar = client.post(
-        f"/katalog/{pub_ids[1]}/toggle",
-        data={"aktiv": "on"},
-        headers={"HX-Request": "true"},
-    )
-    assert bevakas(svar.text) == 2
+    with get_session() as session:
+        site = repo.upsert_site(session, "https://a.se", {"auth": "token"})
+        site.auth_status = "ok"
+        repo.upsert_title_access(session, site, 1, "Läsbar", readable=True)
+        repo.upsert_title_access(session, site, 2, "Låst", readable=False)
 
-    svar = client.post(
-        f"/katalog/{pub_ids[0]}/toggle",
-        data={"aktiv": ""},
-        headers={"HX-Request": "true"},
-    )
-    assert bevakas(svar.text) == 1
-
-    # Och sidan visar samma sak efter en omladdning.
-    assert bevakas(client.get("/katalog").text) == 1
+    svar = client.get("/uppgifter")
+    assert svar.status_code == 200
+    assert "https://a.se" in svar.text
+    assert "2 titlar, 1 läsbara" in svar.text
+    assert "Testa uppgifter" in svar.text
+    assert "Hämta titlar och omslag" in svar.text

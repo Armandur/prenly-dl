@@ -4,28 +4,14 @@
 <hgroup>
   <h1>Katalog</h1>
   <p class="muted">
-    Allt dina inloggningsuppgifter ger tillgång till, en sajt i taget.
-    Aktivera en titel för att bevaka den: nya utgåvor upptäcks då av den
-    schemalagda katalogkontrollen och köas för nedladdning.
+    Titlarna visas en gång per titel-ID. Aktivera en titel för att bevaka den:
+    nya utgåvor upptäcks då av den schemalagda katalogkontrollen.
   </p>
 </hgroup>
 
 <div class="card-actions" style="margin-bottom:1.5rem">
-  <a href="/uppgifter" role="button">Lägg till sajt</a>
-  <span class="muted">
-    Klistra in uppgifter från konsolsnutten, så fylls katalogen med allt de
-    ger tillgång till.
-  </span>
+  <a href="/uppgifter" role="button">Hantera uppgifter</a>
 </div>
 
-{% if not sajter %}
-  <article>
-    Inga sajter ännu. <a href="/uppgifter">Hämta inloggningsuppgifter</a> för
-    en tidning du prenumererar på, så byggs katalogen av det kontot kommer åt.
-  </article>
-{% endif %}
-
-{% for post in sajter %}
-  {% include "site_card.html" %}
-{% endfor %}
+{% include "catalogue_table.html" %}
 {% endblock %}

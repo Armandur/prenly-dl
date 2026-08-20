@@ -65,16 +65,34 @@ def test_unique_slug_undviker_krock(db):
 
 
 def test_uppgifterna_delas_av_sajtens_titlar(db):
-    """En förnyelse på sajten gäller alla dess titlar."""
+    """En förnyelse på sajten gäller alla dess titelåtkomster."""
     with db() as session:
-        forsta = _publikation(session, "Tidningen", title_id=1)
-        andra = _publikation(session, "Bilagan", title_id=2)
-        assert forsta.site_id == andra.site_id
-        assert len(repo.list_sites(session)) == 1
+        _publikation(session, "Tidningen", title_id=1)
+        _publikation(session, "Bilagan", title_id=2)
+        site = repo.list_sites(session)[0]
+        assert {access.title_id for access in site.title_accesses} == {1, 2}
 
         repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "ny-klient", "auth": "ny-token"}
         )
-        for publication in repo.list_publications(session):
-            assert publication.site.auth == "ny-token"
-            assert repo.credentials_for(publication).auth == "ny-token"
+        assert repo.credentials_for_site(site).auth == "ny-token"
+
+
+def test_site_for_title_valjer_lasbar_sajt_med_fungerande_uppgifter(db):
+    with db() as session:
+        utan = repo.upsert_site(session, "https://utan.se", {"auth": "utan"})
+        med = repo.upsert_site(session, "https://med.se", {"auth": "med"})
+        utan.auth_status = med.auth_status = "ok"
+        repo.upsert_title_access(session, utan, 259, "Expressen", readable=False)
+        repo.upsert_title_access(session, med, 259, "Expressen", readable=True)
+
+        assert repo.site_for_title(session, 259).url == "https://med.se"
+
+
+def test_site_for_title_ger_none_utan_lasratt(db):
+    with db() as session:
+        site = repo.upsert_site(session, "https://a.se", {"auth": "token"})
+        site.auth_status = "ok"
+        repo.upsert_title_access(session, site, 259, "Expressen", readable=False)
+
+        assert repo.site_for_title(session, 259) is None

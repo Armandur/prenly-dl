@@ -8,6 +8,7 @@ skriptet, utan att röra databasen.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -114,6 +115,62 @@ def cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_restore(args: argparse.Namespace) -> int:
+    """Återskapa sajter och bevakning från en exporterad JSON-fil."""
+    init_db()
+    try:
+        data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    except OSError as error:
+        print(f"Kunde inte läsa {args.file}: {error}", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"Trasig JSON i {args.file}: {error}", file=sys.stderr)
+        return 1
+    if not isinstance(data, list):
+        print("Restore-filen ska innehålla en lista med sajter", file=sys.stderr)
+        return 1
+
+    bevakade: set[int] = set()
+    poster: list[tuple[str, dict]] = []
+    for post in data:
+        if not isinstance(post, dict):
+            print("Varje post i restore-filen ska vara ett objekt", file=sys.stderr)
+            return 1
+        credentials = post.get("credentials") or {}
+        url = str(credentials.get("site", "")).rstrip("/")
+        if not url:
+            print("En post saknar credentials.site", file=sys.stderr)
+            return 1
+        try:
+            bevakade.update(int(title_id) for title_id in post.get("_bevakade", []))
+        except (TypeError, ValueError):
+            print("_bevakade ska vara en lista med titel-ID", file=sys.stderr)
+            return 1
+        poster.append((url, credentials))
+
+    with get_session() as session:
+        for url, credentials in poster:
+            site = repo.upsert_site(session, url, credentials)
+            verify_site(session, site)
+
+        kanda = {publication.title_id for publication in repo.list_publications(session)}
+        for title_id in bevakade & kanda:
+            publication = repo.get_publication_for_title(session, title_id)
+            publication.enabled = True
+            session.add(publication)
+
+    saknade = sorted(bevakade - kanda)
+    aterstallda = len(bevakade) - len(saknade)
+    print(f"Återskapade {len(poster)} sajter och {aterstallda} bevakningar")
+    if saknade:
+        print(
+            "Titlar som inte exponerades: " + ", ".join(map(str, saknade)),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def cmd_poll(args: argparse.Namespace) -> int:
     """Kör katalogkontroll och eventuella nedladdningar direkt."""
     init_db()
@@ -152,10 +209,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
             status = verify_site(session, site)
             note = f" - {site.auth_message}" if site.auth_message else ""
             print(f"{site.url}: {status.value}{note}")
-            for publication in repo.list_publications(session, site_id=site.id):
-                lasrätt = "läsbar" if publication.readable else "ingen läsrätt"
-                aktiv = "aktiv" if publication.enabled else "inaktiv"
-                print(f"  {publication.title_id:>6} {publication.name} ({lasrätt}, {aktiv})")
+            for access in site.title_accesses:
+                publication = access.title.publication
+                lasrätt = "läsbar" if access.readable else "ingen läsrätt"
+                aktiv = "aktiv" if publication and publication.enabled else "inaktiv"
+                print(f"  {access.title_id:>6} {access.title.name} ({lasrätt}, {aktiv})")
     return 0
 
 
@@ -178,6 +236,10 @@ def build_parser() -> argparse.ArgumentParser:
     importer = subparsers.add_parser("import", help="Importera JSON-konfigurationer till databasen")
     importer.add_argument("directory", help="Katalog med *.json")
     importer.set_defaults(func=cmd_import)
+
+    restore = subparsers.add_parser("restore", help="Återskapa sajter och bevakning från JSON")
+    restore.add_argument("file", help="JSON-fil med credentials och _bevakade")
+    restore.set_defaults(func=cmd_restore)
 
     poll = subparsers.add_parser("poll", help="Kör katalogkontroll och nedladdningar nu")
     poll.add_argument("--publication", help="Begränsa till en publikation (slug)")

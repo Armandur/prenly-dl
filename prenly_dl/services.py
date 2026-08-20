@@ -62,22 +62,32 @@ def build_issue_preview(
     return result.path
 
 
-def _record_error(session: Session, publication: Publication, error: Exception) -> None:
-    """Skriv felet där det hör hemma.
+def _site_for_publication(session: Session, publication: Publication):
+    site = repo.site_for_title(session, publication.title_id)
+    if site is None:
+        raise PrenlySubscriptionError(
+            f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
+        )
+    return site
 
-    Ett utgånget token är sajtens problem och gäller alla dess titlar. Att
-    en enskild titel inte ingår i prenumerationen är titelns problem, och
-    säger ingenting om uppgifterna.
-    """
+
+def _record_error(
+    session: Session, publication: Publication, site, error: Exception
+) -> None:
+    """Skriv titel- eller autentiseringsfelet där det hör hemma."""
     publication.last_error = str(error)
     session.add(publication)
     if isinstance(error, PrenlySubscriptionError):
-        publication.readable = False
+        if site is not None:
+            for access in publication.accesses:
+                if access.site_id == site.id:
+                    access.readable = False
+                    session.add(access)
         return
     if isinstance(error, PrenlyAuthError):
-        repo.set_site_status(session, publication.site, AuthStatus.AUTH_ERROR, str(error))
-    else:
-        repo.set_site_status(session, publication.site, AuthStatus.ERROR, str(error))
+        repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+    elif site is not None:
+        repo.set_site_status(session, site, AuthStatus.ERROR, str(error))
 
 
 def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
@@ -92,7 +102,7 @@ def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
         title_id = titel.get("id")
         if title_id is None:
             continue
-        _, created = repo.upsert_publication(
+        _, created = repo.upsert_title_access(
             session,
             site,
             int(title_id),
@@ -101,6 +111,9 @@ def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
         )
         if created:
             nya += 1
+    repo.remove_missing_title_accesses(
+        session, site, {int(t["id"]) for t in titles if t.get("id") is not None}
+    )
     repo.set_site_status(session, site, AuthStatus.OK, None)
     return nya, len(titles)
 
@@ -125,7 +138,7 @@ def verify_site(session: Session, site) -> AuthStatus:
 
 def verify_credentials(session: Session, publication: Publication) -> AuthStatus:
     """Kontrollera sajtens uppgifter utifrån en av dess publikationer."""
-    return verify_site(session, publication.site)
+    return verify_site(session, _site_for_publication(session, publication))
 
 
 def discover_titles(creds) -> list[dict]:
@@ -140,7 +153,8 @@ def poll_publication(
 ) -> dict:
     """Hämta katalogen, spara nya utgåvor och köa nedladdning av dem."""
     http = build_session()
-    creds = repo.credentials_for(publication)
+    site = _site_for_publication(session, publication)
+    creds = repo.credentials_for_site(site)
     limit = max(1, publication.watch_limit)
 
     token = get_context_token(http, creds)
@@ -164,7 +178,7 @@ def poll_publication(
     session.add(publication)
     # Katalogen svarar även när prenumerationen gått ut, så titellistan är
     # det som avgör om utgåvorna faktiskt går att hämta.
-    synka_titlar(session, publication.site, titles)
+    synka_titlar(session, site, titles)
     logger.info(
         "%s: %d utgåvor i katalogen, %d nya, %d köade",
         publication.name, len(entries), new_issues, queued,
@@ -205,7 +219,8 @@ def ensure_catalogue_depth(
         return 0
 
     http = build_session()
-    creds = repo.credentials_for(publication)
+    site = _site_for_publication(session, publication)
+    creds = repo.credentials_for_site(site)
     token = get_context_token(http, creds)
 
     nya = 0
@@ -256,10 +271,11 @@ def run_poll_job(session: Session, job: Job) -> str:
     totals = {"found": 0, "new": 0, "queued": 0}
     failures: list[str] = []
     for publication in publications:
+        site = repo.site_for_title(session, publication.title_id)
         try:
             result = poll_publication(session, publication)
         except PrenlyError as error:
-            _record_error(session, publication, error)
+            _record_error(session, publication, site, error)
             failures.append(f"{publication.name}: {error}")
             logger.warning("Poll misslyckades för %s: %s", publication.name, error)
             session.commit()
@@ -297,27 +313,29 @@ def run_site_sync_job(session: Session, job: Job) -> str:
     nya_titlar, totalt = synka_titlar(session, site, get_titles(http, creds, token))
     session.commit()
 
-    # Även titlar utan läsrätt: katalogen svarar med senaste utgåvan och
-    # dess omslag oavsett prenumeration, så alla får en bild i katalogen.
-    publikationer = repo.list_publications(session, site_id=site.id)
+    # Sajten används här uttryckligen: synkjobbet ska prova varje titel som
+    # just den sajten exponerar, även när läsrätten är falsk.
+    titlar = [access.title for access in site.title_accesses]
     job_id = job.id
     omslag = 0
-    for index, publication in enumerate(publikationer, start=1):
+    for index, title in enumerate(titlar, start=1):
         try:
             entries = get_catalogue_issues(
-                http, creds, token, publication.title_id, limit=1
+                http, creds, token, title.title_id, limit=1
             )
         except PrenlyError as error:
-            logger.warning("Kunde inte hämta %s: %s", publication.name, error)
+            logger.warning("Kunde inte hämta %s: %s", title.name, error)
             continue
         for entry in entries:
-            issue, _ = repo.upsert_issue(session, publication, entry)
+            issue, _ = repo.upsert_issue(session, title, entry)
+            title.cover_checksum = issue.cover_checksum
             if issue.cover_checksum and fetch_and_cache_cover(
-                http, creds, publication.title_id, issue.cover_checksum
+                http, creds, title.title_id, issue.cover_checksum
             ):
                 omslag += 1
+        session.add(title)
         session.commit()
-        repo.update_job_progress(job_id, index, len(publikationer))
+        repo.update_job_progress(job_id, index, len(titlar))
 
     return f"{totalt} titlar ({nya_titlar} nya), {omslag} omslag hämtade"
 
@@ -354,7 +372,7 @@ def run_download_job(session: Session, job: Job) -> str:
     if issue is None:
         raise PrenlyError("Jobbet saknar utgåva")
 
-    publication = repo.get_publication(session, issue.publication_id)
+    publication = repo.get_publication_for_title(session, issue.title_id)
     if publication is None:
         raise PrenlyError("Utgåvan saknar publikation")
 
@@ -367,11 +385,12 @@ def run_download_job(session: Session, job: Job) -> str:
     def progress(done: int, total: int) -> None:
         repo.update_job_progress(job_id, done, total)
 
+    site = _site_for_publication(session, publication)
     http = build_session()
     try:
         result = download_issue(
             http,
-            repo.credentials_for(publication),
+            repo.credentials_for_site(site),
             publication.title_id,
             issue.uid,
             publication_output_dir(publication),
@@ -383,7 +402,7 @@ def run_download_job(session: Session, job: Job) -> str:
         issue.status = IssueStatus.ERROR.value
         issue.error = str(error)
         session.add(issue)
-        _record_error(session, publication, error)
+        _record_error(session, publication, site, error)
         raise
 
     issue.status = IssueStatus.DONE.value
@@ -395,10 +414,9 @@ def run_download_job(session: Session, job: Job) -> str:
     session.add(issue)
     # En lyckad nedladdning bevisar att både uppgifterna och läsrätten
     # fungerar.
-    publication.readable = True
     publication.last_error = None
     session.add(publication)
-    repo.set_site_status(session, publication.site, AuthStatus.OK, None)
+    repo.set_site_status(session, site, AuthStatus.OK, None)
 
     if result.skipped:
         return f"{result.path.name} fanns redan"

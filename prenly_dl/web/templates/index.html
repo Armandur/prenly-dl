@@ -37,8 +37,8 @@
       <div class="card-head">
         {% if row.latest and row.latest.cover_checksum %}
           <img class="cover" loading="lazy"
-               src="/covers/{{ pub.id }}/{{ row.latest.cover_checksum }}.jpg"
-               data-lightbox-src="/covers/{{ pub.id }}/{{ row.latest.cover_checksum }}.jpg?stor=1"
+               src="/covers/{{ pub.title_id }}/{{ row.latest.cover_checksum }}.jpg"
+               data-lightbox-src="/covers/{{ pub.title_id }}/{{ row.latest.cover_checksum }}.jpg?stor=1"
                alt="Titelsida {{ row.latest.name }}">
         {% else %}
           <span class="cover cover-missing">Inget omslag</span>
@@ -48,11 +48,11 @@
           {# Läsrätten hör till titeln, uppgifterna till sajten. Märkningen
              visas bara när något är fel - annars säger den ingenting. #}
           {%- set visa_lasratt = not pub.readable %}
-          {%- set visa_sajt = pub.site.auth_status != "ok" %}
+          {%- set visa_sajt = not row.site or row.site.auth_status != "ok" %}
           {%- if visa_lasratt or visa_sajt %}<br>{% endif %}
           {%- if visa_lasratt %}<span class="badge warn">Ingen läsrätt</span>{% endif %}
-          {%- if visa_sajt %}
-            <span class="badge {{ pub.site.auth_status|status_class }}">{{ status_labels.get(pub.site.auth_status, pub.site.auth_status) }}</span>
+          {%- if visa_sajt and row.site %}
+            <span class="badge {{ row.site.auth_status|status_class }}">{{ status_labels.get(row.site.auth_status, row.site.auth_status) }}</span>
           {%- endif %}
         </div>
       </div>
@@ -73,11 +73,11 @@
         {% endif %}
       </p>
       {% if pub.last_error %}<p class="muted">{{ pub.last_error }}</p>
-      {% elif pub.site.auth_message %}<p class="muted">{{ pub.site.auth_message }}</p>{% endif %}
+      {% elif row.site and row.site.auth_message %}<p class="muted">{{ row.site.auth_message }}</p>{% endif %}
     </div>
     <div class="card-actions">
       <form method="post" action="/publications/{{ pub.id }}/poll"><button class="secondary outline">Kontrollera nu</button></form>
-      <form method="post" action="/sites/{{ pub.site_id }}/verify"><button class="secondary outline">Testa uppgifter</button></form>
+      <form method="post" action="/sites/{{ row.site.id }}/verify" {% if not row.site %}hidden{% endif %}><button class="secondary outline">Testa uppgifter</button></form>
     </div>
   </article>
 {% endfor %}

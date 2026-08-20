@@ -118,6 +118,7 @@ def index(request: Request):
             antal, storlek = folder_usage(publication_output_dir(publication))
             rows.append({
                 "publication": publication,
+                "site": repo.site_for_title(session, publication.title_id),
                 "latest": repo.latest_issue(session, publication.id),
                 "filer": antal,
                 "storlek": storlek,
@@ -146,50 +147,47 @@ def index(request: Request):
 
 
 def _sajtkontext(session, site) -> dict:
-    """Allt ett sajtkort behöver."""
-    publikationer = repo.list_publications(session, site_id=site.id)
-    return {
-        "site": site,
-        # Antalet utgåvor räknas i databasen: att ladda relationen
-        # för att mäta dess längd hämtar tusentals rader i onödan.
-        "rader": [
-            {
-                "pub": p,
-                "utgavor": repo.count_issues(session, p.id),
-                "senaste": repo.latest_issue(session, p.id),
-            }
-            for p in publikationer
-        ],
-        "antal": len(publikationer),
-        "aktiva": sum(1 for p in publikationer if p.enabled),
-        "lasbara": sum(1 for p in publikationer if p.readable),
-    }
+    """Allt en sajtrad på uppgiftssidan behöver."""
+    antal, lasbara = repo.site_title_counts(session, site.id)
+    return {"site": site, "antal": antal, "lasbara": lasbara}
 
 
-def _sajtkort(request: Request, site_id: int, meddelande: str | None = None):
-    """Rendera om ett sajtkort för htmx, eller gå tillbaka till katalogen."""
+def _sajtrad(request: Request, site_id: int, meddelande: str | None = None):
+    """Rendera om en sajtrad för htmx, eller gå tillbaka till uppgifterna."""
     if not request.headers.get("HX-Request"):
-        return back("/katalog")
+        return back("/uppgifter")
     with get_session() as session:
         site = repo.get_site(session, site_id)
         if site is None:
-            return back("/katalog")
+            return HTMLResponse("")
         kontext = _sajtkontext(session, site)
     return render(
         request, "site_card.html", post=kontext, kortmeddelande=meddelande, flashes=[]
     )
 
 
+def _katalogkontext(session) -> list[dict]:
+    rader = []
+    for title in repo.list_titles(session):
+        publication = title.publication
+        rader.append({
+            "title": title,
+            "pub": publication,
+            "utgavor": repo.count_title_issues(session, title.title_id),
+            "senaste": repo.latest_title_issue(session, title.title_id),
+            "lasbar": repo.title_is_readable(title),
+            "atkomster": title.accesses,
+        })
+    return rader
+
+
 @router.get("/katalog", response_class=HTMLResponse)
 def catalogue(request: Request):
-    """Alla kända titlar per sajt, med växel för bevakning.
-
-    Läses ur databasen: katalogen visar vad kontot hade tillgång till även
-    när uppgifterna slutat gälla.
-    """
+    """Alla kända titlar, deduplicerade på Prenlys globala titel-ID."""
     with get_session() as session:
-        sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
-    return render(request, "catalogue.html", sajter=sajter)
+        rader = _katalogkontext(session)
+        har_sajter = bool(repo.list_sites(session))
+    return render(request, "catalogue.html", rader=rader, har_sajter=har_sajter)
 
 
 @router.post("/katalog/{publication_id}/toggle")
@@ -199,12 +197,22 @@ def toggle_publication(request: Request, publication_id: int, aktiv: str = Form(
         publication = repo.get_publication(session, publication_id)
         if publication is None:
             return back("/katalog")
-        publication.enabled = aktiv == "on"
-        session.add(publication)
-        namn, pa, site_id = publication.name, publication.enabled, publication.site_id
-    besked = f"{namn} {'bevakas nu' if pa else 'bevakas inte längre'}"
-    if request.headers.get("HX-Request"):
-        return _sajtkort(request, site_id, besked)
+        if aktiv == "on" and not publication.readable:
+            besked = f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
+        else:
+            publication.enabled = aktiv == "on"
+            session.add(publication)
+            besked = (
+                f"{publication.name} bevakas nu"
+                if publication.enabled
+                else f"{publication.name} bevakas inte längre"
+            )
+        if request.headers.get("HX-Request"):
+            rader = _katalogkontext(session)
+            return render(
+                request, "catalogue_table.html", rader=rader,
+                kortmeddelande=besked, flashes=[],
+            )
     flash(request, besked, "success")
     return back("/katalog")
 
@@ -215,16 +223,14 @@ def verify_site_route(request: Request, site_id: int):
     with get_session() as session:
         site = repo.get_site(session, site_id)
         if site is None:
-            return back("/katalog")
+            return back("/uppgifter")
         status = verify_site(session, site)
         url, message = site.url, site.auth_message
-    besked = (
-        "Uppgifterna fungerar" if status is AuthStatus.OK else f"{message}"
-    )
+    besked = "Uppgifterna fungerar" if status is AuthStatus.OK else f"{message}"
     if request.headers.get("HX-Request"):
-        return _sajtkort(request, site_id, besked)
+        return _sajtrad(request, site_id, besked)
     flash(request, f"{url}: {besked}", "success" if status is AuthStatus.OK else "error")
-    return back("/katalog")
+    return back("/uppgifter")
 
 
 @router.post("/sites/{site_id}/sync")
@@ -232,7 +238,7 @@ def sync_site(request: Request, site_id: int):
     """Köa en synk av sajtens titlar och deras omslag."""
     with get_session() as session:
         if repo.get_site(session, site_id) is None:
-            return back("/katalog")
+            return back("/uppgifter")
         job = repo.enqueue_site_sync(session, site_id)
     besked = (
         "Sajten synkas redan"
@@ -240,9 +246,9 @@ def sync_site(request: Request, site_id: int):
         else "Hämtar titlar och omslag, följ förloppet under Jobb"
     )
     if request.headers.get("HX-Request"):
-        return _sajtkort(request, site_id, besked)
+        return _sajtrad(request, site_id, besked)
     flash(request, besked, "info" if job is None else "success")
-    return back("/katalog")
+    return back("/uppgifter")
 
 
 @router.post("/sites/{site_id}/delete")
@@ -250,29 +256,31 @@ def delete_site(request: Request, site_id: int):
     with get_session() as session:
         site = repo.get_site(session, site_id)
         if site is not None:
-            session.delete(site)
-    flash(request, "Sajten och dess publikationer togs bort", "success")
-    return back("/katalog")
+            repo.delete_site(session, site)
+    if request.headers.get("HX-Request"):
+        return HTMLResponse("")
+    flash(request, "Sajten togs bort", "success")
+    return back("/uppgifter")
 
 
-@router.get("/covers/{publication_id}/{checksum}.jpg")
-def cover_image(publication_id: int, checksum: str, stor: bool = False):
-    """Servera ett cachat omslag, och hämta det vid första förfrågan.
-
-    Bilden är innehållsadresserad via checksumman, så den kan cachas hårt
-    i webbläsaren.
-    """
+@router.get("/covers/{title_id}/{checksum}.jpg")
+def cover_image(title_id: int, checksum: str, stor: bool = False):
+    """Servera ett cachat omslag och välj en fungerande sajt vid cachemiss."""
     headers = {"Cache-Control": "public, max-age=604800, immutable"}
-    with get_session() as session:
-        publication = repo.get_publication(session, publication_id)
-        if publication is None:
-            return JSONResponse({"error": "okänd publikation"}, status_code=404)
-        title_id = publication.title_id
-        creds = repo.credentials_for(publication)
-
     variant = {"stor": True} if stor else {}
     path = cached_cover_path(title_id, checksum, **variant)
     if path is None:
+        with get_session() as session:
+            title = repo.get_title(session, title_id)
+            site = repo.site_for_title(session, title_id)
+            if title is None:
+                return JSONResponse({"error": "okänd titel"}, status_code=404)
+            if site is None:
+                return JSONResponse(
+                    {"error": f"Ingen av dina inloggningsuppgifter ger läsrätt till {title.name}"},
+                    status_code=403,
+                )
+            creds = repo.credentials_for_site(site)
         path = fetch_and_cache_cover(
             build_session(), creds, title_id, checksum, **variant
         )
@@ -289,10 +297,12 @@ def _konsolsnutt() -> str:
 
 @router.get("/uppgifter", response_class=HTMLResponse)
 def credentials_help(request: Request):
-    """Konsolsnutten och ytan att klistra in resultatet på."""
+    """Sparade sajter samt konsolsnutten och inklistringsytan."""
+    with get_session() as session:
+        sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=None,
-        fyndfel=None, fyndsajter=None,
+        fyndfel=None, fyndsajter=None, sajter=sajter,
     )
 
 
@@ -313,9 +323,12 @@ def _rendera_fynd(
             request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel,
             fyndvarning=fyndvarning, fyndsajter=fyndsajter, flashes=[],
         )
+    with get_session() as session:
+        sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
         fyndfel=fyndfel, fyndvarning=fyndvarning, fyndsajter=fyndsajter,
+        sajter=sajter,
     )
 
 
@@ -614,6 +627,7 @@ def publication_detail(request: Request, slug: str, page: int = 1):
             return back("/")
 
         kontext = _utgavekontext(session, publication, page)
+        site = repo.site_for_title(session, publication.title_id)
         latest = repo.latest_issue(session, publication.id)
         jobs = [j for j in repo.list_jobs(session, limit=200)
                 if j.publication_id == publication.id][:20]
@@ -621,7 +635,7 @@ def publication_detail(request: Request, slug: str, page: int = 1):
     if fel:
         flash(request, fel, "error")
     return render(
-        request, "publication.html", latest=latest, jobs=jobs, **kontext
+        request, "publication.html", latest=latest, jobs=jobs, site=site, **kontext
     )
 
 
@@ -701,11 +715,12 @@ def _publikationsfragment(request: Request, publication_id: int, meddelande: str
             return back("/")
         slug = publication.slug
         latest = repo.latest_issue(session, publication.id)
+        site = repo.site_for_title(session, publication.title_id)
         if not request.headers.get("HX-Request"):
             return None, slug
         svar = render(
             request, "publication_head.html", publication=publication,
-            latest=latest, kortmeddelande=meddelande, flashes=[],
+            latest=latest, site=site, kortmeddelande=meddelande, flashes=[],
         )
     return svar, slug
 
@@ -717,12 +732,17 @@ def verify_publication(request: Request, publication_id: int):
         publication = repo.get_publication(session, publication_id)
         if publication is None:
             return back("/")
-        status = verify_site(session, publication.site)
-        besked = (
-            "Uppgifterna fungerar"
-            if status is AuthStatus.OK
-            else publication.site.auth_message or "Uppgifterna gäller inte längre"
-        )
+        site = repo.site_for_title(session, publication.title_id)
+        if site is None:
+            status = AuthStatus.SUBSCRIPTION_ERROR
+            besked = f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
+        else:
+            status = verify_site(session, site)
+            besked = (
+                "Uppgifterna fungerar"
+                if status is AuthStatus.OK
+                else site.auth_message or "Uppgifterna gäller inte längre"
+            )
     svar, slug = _publikationsfragment(request, publication_id, besked)
     if svar is not None:
         return svar
@@ -761,7 +781,8 @@ def delete_publication(request: Request, publication_id: int):
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is not None:
-            session.delete(publication)
+            publication.enabled = False
+            session.add(publication)
     flash(request, "Publikationen togs bort", "success")
     return back("/")
 
@@ -779,7 +800,7 @@ def download_issue_now(
         issue = repo.get_issue(session, issue_id)
         if issue is None:
             return back("/")
-        publication = repo.get_publication(session, issue.publication_id)
+        publication = repo.get_publication_for_title(session, issue.title_id)
         slug = publication.slug if publication else ""
         job = repo.enqueue_download(session, issue, force=force == "on")
         namn = issue.name
@@ -805,11 +826,16 @@ def _forhandsgranskningsdata(issue_id: int):
         issue = repo.get_issue(session, issue_id)
         if issue is None:
             return None, "Utgåvan finns inte"
-        publication = repo.get_publication(session, issue.publication_id)
+        publication = repo.get_publication_for_title(session, issue.title_id)
         if publication is None:
             return None, "Publikationen finns inte"
+        site = repo.site_for_title(session, publication.title_id)
+        if site is None:
+            return None, (
+                f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
+            )
         return (
-            repo.credentials_for(publication),
+            repo.credentials_for_site(site),
             publication.title_id,
             issue.uid,
             publication.prefix,

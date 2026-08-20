@@ -49,6 +49,7 @@ def skapa_publikation(db):
                 session, site_url,
                 {"textalk-auth": "k", "auth": "t", "cdn": falt.pop("cdn", "")},
             )
+            site.auth_status = "ok"
             publication, _ = repo.upsert_publication(
                 session, site, title_id, namn, readable=readable
             )

@@ -14,6 +14,7 @@ def publikation(db):
         site = repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        site.auth_status = "ok"
         publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
         publication.enabled = True
         session.add(publication)

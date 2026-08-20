@@ -17,8 +17,8 @@
     <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
   </div>
   <p class="muted">
-    Inloggningsuppgifterna hör till sajten <a href="/katalog">{{ publication.site.url }}</a>
-    och delas av alla dess titlar. Blir statusen "Utloggad":
+    Inloggningsuppgifterna väljs automatiskt bland sajterna som ger läsrätt till titeln.
+    {% if site %}Aktuell sajt: <a href="/uppgifter">{{ site.url }}</a>.{% endif %} Blir statusen "Utloggad":
     <a href="/uppgifter">hämta nya med konsolsnutten</a> och klistra in dem en
     gång, så gäller de här med.
   </p>

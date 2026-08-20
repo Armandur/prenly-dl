@@ -52,6 +52,7 @@ def _skapa_publikation(namn="Tidningen", enabled=True):
         site = repo.upsert_site(
             session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        site.auth_status = "ok"
         publication, _ = repo.upsert_publication(session, site, 4019, namn)
         publication.enabled = enabled
         session.add(publication)
@@ -431,8 +432,7 @@ def test_fornyade_uppgifter_galler_alla_sajtens_titlar(client):
         # En rad att förnya, och den gäller alla titlar under sajten.
         assert len(repo_module.list_sites(session)) == 1
         assert repo_module.list_sites(session)[0].auth == "helt-ny-token"
-        for publication in repo_module.list_publications(session):
-            assert repo_module.credentials_for(publication).auth == "helt-ny-token"
+        assert {site.auth for site in repo_module.list_sites(session)} == {"helt-ny-token"}
 
 
 ETT_BLOCK = """{
@@ -476,10 +476,7 @@ def test_ett_block_fornyar_hela_sajten(client_utan_api):
         assert repo_module.list_sites(session)[0].auth == "ny"
         # Bilagan rördes aldrig i det andra blocket men fick ändå nya
         # uppgifter, eftersom de hör till sajten.
-        bilagan = next(
-            p for p in repo_module.list_publications(session) if p.title_id == 3181
-        )
-        assert repo_module.credentials_for(bilagan).auth == "ny"
+        assert repo_module.list_sites(session)[0].auth == "ny"
 
 
 def test_granskning_via_htmx_ger_bara_fragmentet(client):

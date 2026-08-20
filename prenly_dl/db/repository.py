@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from ..api import Credentials
 from .models import (
     AuthStatus,
-    Site,
     Issue,
     IssueStatus,
     Job,
@@ -22,6 +21,9 @@ from .models import (
     JobType,
     Publication,
     Setting,
+    Site,
+    Title,
+    TitleAccess,
     utcnow,
 )
 
@@ -35,14 +37,14 @@ def slugify(value: str) -> str:
     return _SLUG_UNSAFE.sub("-", lowered).strip("-") or "publikation"
 
 
-def unique_slug(session: Session, base: str, exclude_id: int | None = None) -> str:
+def unique_slug(session: Session, base: str, exclude_title_id: int | None = None) -> str:
     slug = slugify(base)
     candidate = slug
     counter = 2
     while True:
-        stmt = select(Publication).where(Publication.slug == candidate)
-        if exclude_id is not None:
-            stmt = stmt.where(Publication.id != exclude_id)
+        stmt = select(Title).where(Title.slug == candidate)
+        if exclude_title_id is not None:
+            stmt = stmt.where(Title.title_id != exclude_title_id)
         if session.execute(stmt).first() is None:
             return candidate
         candidate = f"{slug}-{counter}"
@@ -50,7 +52,7 @@ def unique_slug(session: Session, base: str, exclude_id: int | None = None) -> s
 
 
 # --------------------------------------------------------------------------
-# Sajter
+# Sajter och titelåtkomst
 # --------------------------------------------------------------------------
 
 
@@ -69,11 +71,6 @@ def find_site(session: Session, url: str) -> Site | None:
 
 
 def upsert_site(session: Session, url: str, credentials: dict) -> Site:
-    """Skapa eller uppdatera en sajt med dess inloggningsuppgifter.
-
-    Uppgifterna hör till sajten, så en förnyelse här gäller omedelbart för
-    alla titlar sajten exponerar.
-    """
     url = url.rstrip("/")
     site = find_site(session, url)
     if site is None:
@@ -104,77 +101,184 @@ def set_site_status(
     session.add(site)
 
 
+def delete_site(session: Session, site: Site) -> None:
+    """Ta bort sajten och titlar som därefter saknar både åtkomst och bevakning."""
+    session.delete(site)
+    session.flush()
+    orphaner = session.execute(
+        select(Title).where(~Title.accesses.any(), ~Title.publication.has())
+    ).unique().scalars()
+    for title in orphaner:
+        session.delete(title)
+
+
+def list_titles(session: Session) -> list[Title]:
+    return list(
+        session.execute(
+            select(Title).where(Title.accesses.any()).order_by(Title.name)
+        ).unique().scalars()
+    )
+
+
+def get_title(session: Session, title_id: int) -> Title | None:
+    return session.execute(
+        select(Title).where(Title.title_id == title_id)
+    ).unique().scalar_one_or_none()
+
+
+def get_title_by_slug(session: Session, slug: str) -> Title | None:
+    return session.execute(
+        select(Title).where(Title.slug == slug)
+    ).unique().scalar_one_or_none()
+
+
+def upsert_title_access(
+    session: Session, site: Site, title_id: int, namn: str, readable: bool = True
+) -> tuple[Title, bool]:
+    """Skapa titeln vid behov och uppdatera sajtens åtkomstrad."""
+    title = get_title(session, title_id)
+    created = title is None
+    if title is None:
+        title = Title(title_id=title_id, name=namn, slug=unique_slug(session, namn))
+        session.add(title)
+        session.flush()
+    elif namn and title.name != namn:
+        title.name = namn
+
+    access = session.execute(
+        select(TitleAccess).where(
+            TitleAccess.title_id == title_id, TitleAccess.site_id == site.id
+        )
+    ).unique().scalar_one_or_none()
+    if access is None:
+        access = TitleAccess(title_id=title_id, site_id=site.id)
+    access.readable = readable
+    session.add_all([title, access])
+    session.flush()
+    ensure_publication(session, title)
+    return title, created
+
+
+def remove_missing_title_accesses(
+    session: Session, site: Site, current_title_ids: set[int]
+) -> None:
+    for access in list(site.title_accesses):
+        if access.title_id not in current_title_ids:
+            session.delete(access)
+
+
+def title_accesses(session: Session, title_id: int) -> list[TitleAccess]:
+    return list(session.execute(
+        select(TitleAccess)
+        .where(TitleAccess.title_id == title_id)
+        .order_by(TitleAccess.site_id)
+    ).unique().scalars())
+
+
+def site_title_counts(session: Session, site_id: int) -> tuple[int, int]:
+    total = session.execute(
+        select(func.count(TitleAccess.id)).where(TitleAccess.site_id == site_id)
+    ).scalar_one()
+    readable = session.execute(
+        select(func.count(TitleAccess.id)).where(
+            TitleAccess.site_id == site_id, TitleAccess.readable.is_(True)
+        )
+    ).scalar_one()
+    return total, readable
+
+
+def title_is_readable(title: Title) -> bool:
+    return any(access.readable for access in title.accesses)
+
+
+def site_for_title(session: Session, title_id: int) -> Site | None:
+    """Välj en fungerande sajt som uttryckligen ger läsrätt till titeln."""
+    return session.execute(
+        select(Site)
+        .join(TitleAccess)
+        .where(
+            TitleAccess.title_id == title_id,
+            TitleAccess.readable.is_(True),
+            Site.auth_status == AuthStatus.OK.value,
+        )
+        .order_by(Site.url)
+        .limit(1)
+    ).scalar_one_or_none()
+
+
 # --------------------------------------------------------------------------
-# Publikationer
+# Bevakningar
 # --------------------------------------------------------------------------
 
 
 def list_publications(
     session: Session, enabled_only: bool = False, site_id: int | None = None
 ) -> list[Publication]:
-    stmt = select(Publication).order_by(Publication.name)
+    stmt = select(Publication).join(Title).order_by(Title.name)
     if enabled_only:
         stmt = stmt.where(Publication.enabled.is_(True))
     if site_id is not None:
-        stmt = stmt.where(Publication.site_id == site_id)
-    return list(session.execute(stmt).scalars())
+        stmt = stmt.join(TitleAccess).where(TitleAccess.site_id == site_id)
+    return list(session.execute(stmt).unique().scalars())
 
 
 def get_publication(session: Session, publication_id: int) -> Publication | None:
-    return session.get(Publication, publication_id)
+    return session.execute(
+        select(Publication).where(Publication.id == publication_id)
+    ).unique().scalar_one_or_none()
+
+
+def get_publication_for_title(session: Session, title_id: int) -> Publication | None:
+    return session.execute(
+        select(Publication).where(Publication.title_id == title_id)
+    ).unique().scalar_one_or_none()
 
 
 def get_publication_by_slug(session: Session, slug: str) -> Publication | None:
     return session.execute(
-        select(Publication).where(Publication.slug == slug)
-    ).scalar_one_or_none()
+        select(Publication).join(Title).where(Title.slug == slug)
+    ).unique().scalar_one_or_none()
 
 
 def find_publication(session: Session, site: str, title_id: int) -> Publication | None:
-    """Slå upp en publikation på sajtens URL och titel-ID."""
-    row = session.execute(
+    return session.execute(
         select(Publication)
+        .join(TitleAccess, TitleAccess.title_id == Publication.title_id)
         .join(Site)
         .where(Site.url == site.rstrip("/"), Publication.title_id == title_id)
-    ).scalar_one_or_none()
-    return row
+    ).unique().scalar_one_or_none()
 
 
-def credentials_for(publication: Publication) -> Credentials:
-    return credentials_for_site(publication.site)
-
-
-def upsert_publication(
-    session: Session, site: Site, title_id: int, namn: str, readable: bool = True,
-) -> tuple[Publication, bool]:
-    """Skapa eller uppdatera en titel under en sajt. Returnerar (rad, ny)."""
-    publication = session.execute(
-        select(Publication).where(
-            Publication.site_id == site.id, Publication.title_id == title_id
-        )
-    ).scalar_one_or_none()
-
+def ensure_publication(session: Session, title: Title) -> tuple[Publication, bool]:
+    publication = get_publication_for_title(session, title.title_id)
     created = publication is None
     if publication is None:
         publication = Publication(
-            site_id=site.id,
-            title_id=title_id,
-            name=namn,
-            slug=unique_slug(session, namn),
-            prefix=f"{namn} - ",
-            folder=namn,
+            title_id=title.title_id,
+            prefix=f"{title.name} - ",
+            folder=title.name,
         )
-    elif namn and publication.name != namn:
-        publication.name = namn
-    publication.readable = readable
-    session.add(publication)
-    session.flush()
+        session.add(publication)
+        session.flush()
     return publication, created
+
+
+def upsert_publication(
+    session: Session, site: Site, title_id: int, namn: str, readable: bool = True
+) -> tuple[Publication, bool]:
+    """Importhjälpare: säkra titelåtkomst och skapa dess bevakningsrad."""
+    title, _ = upsert_title_access(session, site, title_id, namn, readable)
+    return ensure_publication(session, title)
 
 
 # --------------------------------------------------------------------------
 # Utgåvor
 # --------------------------------------------------------------------------
+
+
+def _title_id(session: Session, publication_id: int) -> int:
+    publication = get_publication(session, publication_id)
+    return publication.title_id if publication else -1
 
 
 def list_issues(
@@ -185,59 +289,68 @@ def list_issues(
 ) -> list[Issue]:
     stmt = select(Issue).order_by(Issue.publication_date.desc(), Issue.id.desc())
     if publication_id is not None:
-        stmt = stmt.where(Issue.publication_id == publication_id)
-    return list(session.execute(stmt.limit(limit).offset(offset)).scalars())
+        stmt = stmt.where(Issue.title_id == _title_id(session, publication_id))
+    return list(session.execute(stmt.limit(limit).offset(offset)).unique().scalars())
 
 
 def count_issues(session: Session, publication_id: int) -> int:
     return session.execute(
-        select(func.count(Issue.id)).where(Issue.publication_id == publication_id)
+        select(func.count(Issue.id)).where(Issue.title_id == _title_id(session, publication_id))
+    ).scalar_one()
+
+
+def count_title_issues(session: Session, title_id: int) -> int:
+    return session.execute(
+        select(func.count(Issue.id)).where(Issue.title_id == title_id)
     ).scalar_one()
 
 
 def get_issue(session: Session, issue_id: int) -> Issue | None:
-    return session.get(Issue, issue_id)
+    return session.execute(
+        select(Issue).where(Issue.id == issue_id)
+    ).unique().scalar_one_or_none()
 
 
 def upsert_issue(
-    session: Session, publication: Publication, entry: dict
+    session: Session, owner: Publication | Title, entry: dict
 ) -> tuple[Issue, bool]:
-    """Skapa eller uppdatera en utgåva från en katalogpost. Returnerar (utgåva, ny)."""
+    title_id = owner.title_id
     uid = str(entry.get("uid") or entry.get("id"))
     issue = session.execute(
-        select(Issue).where(
-            Issue.publication_id == publication.id, Issue.uid == uid
-        )
-    ).scalar_one_or_none()
-
+        select(Issue).where(Issue.title_id == title_id, Issue.uid == uid)
+    ).unique().scalar_one_or_none()
     created = issue is None
     if issue is None:
-        issue = Issue(publication_id=publication.id, uid=uid)
-
+        issue = Issue(title_id=title_id, uid=uid)
     issue.name = str(entry.get("name") or uid)
     issue.publication_date = entry.get("publication_date")
-    media = entry.get("media") or {}
-    issue.cover_checksum = media.get("checksum")
+    issue.cover_checksum = (entry.get("media") or {}).get("checksum")
     session.add(issue)
     session.flush()
     return issue, created
 
 
 def latest_issue(session: Session, publication_id: int) -> Issue | None:
-    """Senaste kända utgåvan, oavsett om den hämtats."""
     issues = list_issues(session, publication_id, limit=1)
     return issues[0] if issues else None
 
 
+def latest_title_issue(session: Session, title_id: int) -> Issue | None:
+    return session.execute(
+        select(Issue)
+        .where(Issue.title_id == title_id)
+        .order_by(Issue.publication_date.desc(), Issue.id.desc())
+        .limit(1)
+    ).unique().scalar_one_or_none()
+
+
 def issues_pending_download(session: Session, publication_id: int) -> list[Issue]:
-    return list(
-        session.execute(
-            select(Issue).where(
-                Issue.publication_id == publication_id,
-                Issue.status.in_([IssueStatus.NEW.value, IssueStatus.ERROR.value]),
-            )
-        ).scalars()
-    )
+    return list(session.execute(
+        select(Issue).where(
+            Issue.title_id == _title_id(session, publication_id),
+            Issue.status.in_([IssueStatus.NEW.value, IssueStatus.ERROR.value]),
+        )
+    ).unique().scalars())
 
 
 # --------------------------------------------------------------------------
@@ -254,13 +367,15 @@ def has_active_job(session: Session, issue_id: int) -> bool:
 
 
 def enqueue_download(session: Session, issue: Issue, force: bool = False) -> Job | None:
-    """Köa nedladdning av en utgåva om den inte redan har ett aktivt jobb."""
     if has_active_job(session, issue.id):
+        return None
+    publication = get_publication_for_title(session, issue.title_id)
+    if publication is None:
         return None
     job = Job(
         type=JobType.DOWNLOAD.value,
         status=JobStatus.QUEUED.value,
-        publication_id=issue.publication_id,
+        publication_id=publication.id,
         issue_id=issue.id,
         force=force,
     )
@@ -272,25 +387,19 @@ def enqueue_download(session: Session, issue: Issue, force: bool = False) -> Job
 
 
 def enqueue_poll(session: Session, publication_id: int | None = None) -> Job:
-    job = Job(
-        type=JobType.POLL.value,
-        status=JobStatus.QUEUED.value,
-        publication_id=publication_id,
-    )
+    job = Job(type=JobType.POLL.value, status=JobStatus.QUEUED.value,
+              publication_id=publication_id)
     session.add(job)
     session.flush()
     return job
 
 
 def enqueue_site_sync(session: Session, site_id: int) -> Job | None:
-    """Köa en synk av en sajts titlar och deras senaste utgåvor."""
-    pagaende = session.execute(
-        select(Job).where(
-            Job.type == JobType.SITE_SYNC.value,
-            Job.site_id == site_id,
-            Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
-        )
-    ).first()
+    pagaende = session.execute(select(Job).where(
+        Job.type == JobType.SITE_SYNC.value,
+        Job.site_id == site_id,
+        Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+    )).first()
     if pagaende:
         return None
     job = Job(type=JobType.SITE_SYNC.value, status=JobStatus.QUEUED.value, site_id=site_id)
@@ -300,50 +409,36 @@ def enqueue_site_sync(session: Session, site_id: int) -> Job | None:
 
 
 def enqueue_catalogue(session: Session, publication_id: int) -> Job | None:
-    """Köa en full kataloghämtning om det inte redan finns en."""
-    pagaende = session.execute(
-        select(Job).where(
-            Job.type == JobType.CATALOGUE.value,
-            Job.publication_id == publication_id,
-            Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
-        )
-    ).first()
+    pagaende = session.execute(select(Job).where(
+        Job.type == JobType.CATALOGUE.value,
+        Job.publication_id == publication_id,
+        Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+    )).first()
     if pagaende:
         return None
-    job = Job(
-        type=JobType.CATALOGUE.value,
-        status=JobStatus.QUEUED.value,
-        publication_id=publication_id,
-    )
+    job = Job(type=JobType.CATALOGUE.value, status=JobStatus.QUEUED.value,
+              publication_id=publication_id)
     session.add(job)
     session.flush()
     return job
 
 
 def issue_years(session: Session, publication_id: int) -> list[str]:
-    """Åren som publikationens kända utgåvor spänner över, nyast först."""
     rows = session.execute(
         select(func.substr(Issue.publication_date, 1, 4))
-        .where(
-            Issue.publication_id == publication_id,
-            Issue.publication_date.is_not(None),
-        )
+        .where(Issue.title_id == _title_id(session, publication_id),
+               Issue.publication_date.is_not(None))
         .distinct()
     ).scalars()
     return sorted((ar for ar in rows if ar), reverse=True)
 
 
 def issues_newer_than_year(session: Session, publication_id: int, ar: str) -> int:
-    """Antal utgåvor som ligger före årets första, i visningsordningen."""
-    return session.execute(
-        select(func.count(Issue.id)).where(
-            Issue.publication_id == publication_id,
-            Issue.publication_date.is_not(None),
-            Issue.publication_date >= f"{int(ar) + 1}-01-01",
-        )
-    ).scalar_one()
-
-
+    return session.execute(select(func.count(Issue.id)).where(
+        Issue.title_id == _title_id(session, publication_id),
+        Issue.publication_date.is_not(None),
+        Issue.publication_date >= f"{int(ar) + 1}-01-01",
+    )).scalar_one()
 def claim_next_job(session: Session) -> Job | None:
     """Ta nästa köade jobb och märk det som pågående."""
     job = session.execute(
