@@ -15,12 +15,11 @@ from pathlib import Path
 from .api import Credentials, build_session, get_catalogue_issues, get_context_token
 from .config import output_root
 from .db import repository as repo
-from .db.models import JobStatus
 from .db.session import get_session, init_db
 from .downloader import download_issue
 from .errors import PrenlyError
 from .importer import import_directory, load_conf
-from .services import poll_publication, run_download_job, verify_credentials
+from .services import execute_job, poll_publication, verify_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +138,9 @@ def cmd_poll(args: argparse.Namespace) -> int:
             if job is None:
                 break
             session.commit()
-            try:
-                summary = run_download_job(session, job)
-            except PrenlyError as error:
-                print(f"Jobb {job.id} misslyckades: {error}", file=sys.stderr)
-                repo.finish_job(session, job, JobStatus.ERROR, error=str(error))
-            else:
-                print(summary)
-                repo.finish_job(session, job, JobStatus.DONE, message=summary)
+            execute_job(session, job)
             session.commit()
+            print(job.error or job.message or f"Jobb {job.id}: {job.status}")
     return 0
 
 

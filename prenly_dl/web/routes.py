@@ -13,10 +13,10 @@ from fastapi.templating import Jinja2Templates
 from ..api import Credentials
 from ..config import output_root, timezone_name
 from ..db import repository as repo
-from ..db.models import AuthStatus, IssueStatus, JobStatus, Publication
+from ..db.models import AuthStatus, Publication
 from ..db.session import get_session
 from ..errors import PrenlyError
-from ..importer import import_conf, import_directory, load_conf, strip_json_comments
+from ..importer import import_conf, import_directory, strip_json_comments
 from ..scheduler import (
     DEFAULT_JOB_HISTORY_DAYS,
     DEFAULT_POLL_CRON,

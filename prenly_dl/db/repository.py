@@ -6,7 +6,7 @@ Håller SQL-detaljerna borta från schemaläggaren och webblagret.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -171,7 +171,7 @@ def enqueue_download(session: Session, issue: Issue, force: bool = False) -> Job
         status=JobStatus.QUEUED.value,
         publication_id=issue.publication_id,
         issue_id=issue.id,
-        message="Tvingad omnedladdning" if force else None,
+        force=force,
     )
     issue.status = IssueStatus.QUEUED.value
     issue.error = None
@@ -221,11 +221,21 @@ def finish_job(
     session.add(job)
 
 
-def update_job_progress(session: Session, job: Job, done: int, total: int) -> None:
-    job.progress_done = done
-    job.progress_total = total
-    session.add(job)
-    session.commit()
+def update_job_progress(job_id: int, done: int, total: int) -> None:
+    """Skriv förloppet i en egen transaktion.
+
+    Nedladdningens session får inte committas mitt i jobbet: då blir ett
+    halvfärdigt tillstånd bestående om utgåvan misslyckas efteråt.
+    """
+    from .session import get_session
+
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return
+        job.progress_done = done
+        job.progress_total = total
+        session.add(job)
 
 
 def list_jobs(session: Session, limit: int = 50, active_only: bool = False) -> list[Job]:

@@ -33,10 +33,15 @@
         {{ issue.file_path.split("/")[-1] if issue.file_path else "-" }}
       </td>
       <td>
-        <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
-          <input type="hidden" name="force" value="on">
-          <button class="secondary outline">Ladda ner</button>
-        </form>
+        <div class="card-actions">
+          <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
+            <button class="secondary outline">Ladda ner</button>
+          </form>
+          <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
+            <input type="hidden" name="force" value="on">
+            <button class="secondary outline">Tvinga om</button>
+          </form>
+        </div>
       </td>
     </tr>
   {% else %}

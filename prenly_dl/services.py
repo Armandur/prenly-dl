@@ -126,9 +126,12 @@ def run_poll_job(session: Session, job: Job) -> str:
             _record_error(session, publication, error)
             failures.append(f"{publication.name}: {error}")
             logger.warning("Poll misslyckades för %s: %s", publication.name, error)
+            session.commit()
             continue
         for key in totals:
             totals[key] += result[key]
+        # Släpp skrivlåset mellan publikationerna: nästa varv gör HTTP-anrop.
+        session.commit()
 
     summary = (
         f"{len(publications)} publikationer, {totals['new']} nya utgåvor, "
@@ -150,13 +153,14 @@ def run_download_job(session: Session, job: Job) -> str:
     if publication is None:
         raise PrenlyError("Utgåvan saknar publikation")
 
-    force = job.message == "Tvingad omnedladdning"
     issue.status = IssueStatus.DOWNLOADING.value
     session.add(issue)
     session.commit()
 
+    job_id = job.id
+
     def progress(done: int, total: int) -> None:
-        repo.update_job_progress(session, job, done, total)
+        repo.update_job_progress(job_id, done, total)
 
     http = build_session()
     try:
@@ -167,7 +171,7 @@ def run_download_job(session: Session, job: Job) -> str:
             issue.uid,
             publication_output_dir(publication),
             prefix=publication.prefix,
-            force=force,
+            force=job.force,
             progress=progress,
         )
     except PrenlyError as error:

@@ -71,7 +71,6 @@ prenly-dl --json=conf.json         # gamla anropsformen fungerar fortfarande
 | `PRENLY_TZ`            | `Europe/Stockholm`    | Tidszon för schema och tidsstämplar        |
 | `PRENLY_SECRET_KEY`    | -                     | Nyckel för sessionscookien                 |
 | `PRENLY_PASSWORD`      | tomt                  | Sätts för att kräva inloggning             |
-| `PRENLY_POLL_INTERVAL` | 360                   | Reserverad för framtida intervall-poll     |
 
 Databasen innehåller inloggningsuppgifter i klartext. Sätt `PRENLY_PASSWORD`
 om tjänsten kan nås av någon annan, och lägg databasfilen där bara du kommer

@@ -139,6 +139,7 @@ class Job(Base):
         ForeignKey("issues.id", ondelete="CASCADE"), nullable=True
     )
 
+    force: Mapped[bool] = mapped_column(Boolean, default=False)
     progress_done: Mapped[int] = mapped_column(Integer, default=0)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)

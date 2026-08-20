@@ -45,19 +45,22 @@ async function refresh() {
   const response = await fetch("/api/jobs");
   if (!response.ok) return;
   const jobs = await response.json();
-  let changed = false;
+  const kandaId = [...document.querySelectorAll("tr[data-job]")].map(r => Number(r.dataset.job));
+  const hogstaKanda = kandaId.length ? Math.max(...kandaId) : 0;
+  let nyttJobb = false;
   for (const job of jobs) {
     const row = document.querySelector(`tr[data-job="${job.id}"]`);
-    if (!row) { changed = true; continue; }
+    // Ladda bara om när ett jobb NYARE än tabellens nyaste dykt upp, annars
+    // triggar äldre jobb utanför API:ts fönster en oändlig omladdning.
+    if (!row) { if (job.id > hogstaKanda) nyttJobb = true; continue; }
     const status = row.querySelector(".job-status span");
-    if (status.textContent !== job.status) changed = true;
     status.textContent = job.status;
     status.className = "badge " + (badgeClass[job.status] || "neutral");
     row.querySelector(".job-progress").textContent = job.progress_total
       ? `${job.progress_done}/${job.progress_total}` : "-";
     row.querySelector(".job-result").textContent = job.error || job.message || "-";
   }
-  if (changed) location.reload();
+  if (nyttJobb) location.reload();
 }
 setInterval(refresh, 5000);
 </script>
