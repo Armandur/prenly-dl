@@ -70,10 +70,14 @@
       </td>
       <td>
         <div class="card-actions">
-          <button class="secondary outline forhandsgranska"
-                  data-preview="/issues/{{ issue.id }}/preview">
-            Förhandsgranska
-          </button>
+          {# En hämtad utgåva har redan filen, och filnamnet är en länk
+             till den - att bygga en andra kopia vore slöseri. #}
+          {% if issue.status != "done" %}
+            <button class="secondary outline forhandsgranska"
+                    data-preview="/issues/{{ issue.id }}/preview">
+              Förhandsgranska
+            </button>
+          {% endif %}
           {% if issue.status != "done" %}
             <form method="post" action="/issues/{{ issue.id }}/download" class="inline"
                   hx-post="/issues/{{ issue.id }}/download"

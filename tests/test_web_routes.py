@@ -738,3 +738,23 @@ def test_hamtad_fil_kan_oppnas_fran_utgaveraden(temp_env, client):
     # En fil som tagits bort utanför prenly-dl ska inte länkas.
     fil.unlink()
     assert "/library/file/Tidningen" not in client.get(f"/publications/{slug}").text
+
+
+def test_hamtad_utgava_saknar_forhandsgranskning(client):
+    """Filen finns redan och filnamnet är en länk till den."""
+    from prenly_dl.db.models import IssueStatus
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        klar, _ = repo.upsert_issue(session, publication, {"uid": "1", "name": "hamtad"})
+        klar.status = IssueStatus.DONE.value
+        ny, _ = repo.upsert_issue(session, publication, {"uid": "2", "name": "ohamtad"})
+        session.add(klar)
+        session.flush()
+        klar_id, ny_id = klar.id, ny.id
+
+    text = client.get(f"/publications/{slug}").text
+    assert f'data-preview="/issues/{ny_id}/preview"' in text
+    assert f'data-preview="/issues/{klar_id}/preview"' not in text
