@@ -250,6 +250,49 @@ def run_poll_job(session: Session, job: Job) -> str:
     return summary
 
 
+def run_site_sync_job(session: Session, job: Job) -> str:
+    """Uppdatera en sajts titlar och hämta senaste utgåvan för var och en.
+
+    Ger katalogen ett omslag per titel. Katalog-API:t kan ta flera
+    title_ids i ett anrop, men returnerar då bara de nyaste utgåvorna över
+    alla titlar - för Ångermanland täckte det 10 av 30. Ett anrop per titel
+    är alltså vad som krävs, och därför hör det hemma i kön.
+    """
+    site = repo.get_site(session, job.site_id) if job.site_id else None
+    if site is None:
+        raise PrenlyError("Jobbet saknar sajt")
+
+    http = build_session()
+    creds = repo.credentials_for_site(site)
+    token = get_context_token(http, creds)
+    nya_titlar, totalt = synka_titlar(session, site, get_titles(http, creds, token))
+    session.commit()
+
+    publikationer = [
+        p for p in repo.list_publications(session, site_id=site.id) if p.readable
+    ]
+    job_id = job.id
+    omslag = 0
+    for index, publication in enumerate(publikationer, start=1):
+        try:
+            entries = get_catalogue_issues(
+                http, creds, token, publication.title_id, limit=1
+            )
+        except PrenlyError as error:
+            logger.warning("Kunde inte hämta %s: %s", publication.name, error)
+            continue
+        for entry in entries:
+            issue, _ = repo.upsert_issue(session, publication, entry)
+            if issue.cover_checksum and fetch_and_cache_cover(
+                http, creds, publication.title_id, issue.cover_checksum
+            ):
+                omslag += 1
+        session.commit()
+        repo.update_job_progress(job_id, index, len(publikationer))
+
+    return f"{totalt} titlar ({nya_titlar} nya), {omslag} omslag hämtade"
+
+
 def run_catalogue_job(session: Session, job: Job) -> str:
     """Hämta hela katalogen för en publikation.
 
@@ -340,6 +383,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_poll_job(session, job)
         elif job.type == JobType.CATALOGUE.value:
             summary = run_catalogue_job(session, job)
+        elif job.type == JobType.SITE_SYNC.value:
+            summary = run_site_sync_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

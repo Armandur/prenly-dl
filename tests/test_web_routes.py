@@ -83,29 +83,6 @@ def test_okand_publikation_leder_till_oversikten(client):
     assert response.headers["location"] == "/"
 
 
-def test_skapa_publikation_fran_json(client):
-    conf = """{
-      "credentials": {"site": "https://b.se", "textalk-auth": "k", "auth": "t"},
-      "publication": {"title": 123, "limit": 2},  # kommentar
-      "prefix": "Bladet - ", "folder": "Bladet"
-    }"""
-    response = client.post("/publications", data={"conf_json": conf}, follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/publications/bladet"
-
-    from prenly_dl.db.session import get_session
-
-    with get_session() as session:
-        publication = repo.get_publication_by_slug(session, "bladet")
-        assert publication.title_id == 123
-        assert publication.watch_limit == 2
-
-
-def test_trasig_json_ger_felmeddelande(client):
-    response = client.post("/publications", data={"conf_json": "{trasig"}, follow_redirects=True)
-    assert "Kunde inte tolka JSON" in response.text
-
-
 def test_koa_nedladdning_skapar_jobb(client):
     publication_id, slug = _skapa_publikation()
     from prenly_dl.db.session import get_session
@@ -258,12 +235,14 @@ def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
 
 
 def test_granskning_markerar_befintliga(client):
-    client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
-    client.post("/publications", data={"conf_json": KONSOLUTSKRIFT.split("---")[2]
-                                       .split("Bilagan")[0].strip()})
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    client.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
+        follow_redirects=True,
+    )
     svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
     assert "Finns redan" in svar.text
-    assert "Ny" in svar.text
 
 
 def test_text_utan_konfiguration_ger_besked(client):
@@ -420,35 +399,20 @@ def test_granskning_utan_javascript_ger_hela_sidan(client):
     assert "2 publikationer" in svar.text
 
 
-def test_inklistringsytan_finns_pa_lagg_till_sidan(client):
-    svar = client.get("/publications/new")
+
+
+def test_inklistringsytan_kommer_forst_pa_uppgiftssidan(client):
+    svar = client.get("/uppgifter")
     assert svar.status_code == 200
     assert 'id="klistra"' in svar.text
     assert 'hx-post="/uppgifter/granska"' in svar.text
+    # Ytan man kommer för ska ligga före instruktionerna och koden.
+    assert svar.text.index('id="klistra"') < svar.text.index("Så här får du tag i dem")
+    assert svar.text.index('id="klistra"') < svar.text.index('id="snutt"')
 
 
-def test_flera_publikationer_gar_lika_bra_fran_lagg_till_sidan(client):
-    svar = client.post(
-        "/uppgifter/granska",
-        data={"klistrat": KONSOLUTSKRIFT},
-        headers={"HX-Request": "true", "Referer": "http://test/publications/new"},
-    )
-    assert "2 publikationer" in svar.text
-
-
-def test_utan_javascript_renderas_sidan_man_kom_ifran(client):
-    fran_ny = client.post(
-        "/uppgifter/granska",
-        data={"klistrat": KONSOLUTSKRIFT},
-        headers={"Referer": "http://test/publications/new"},
-    )
-    assert "Fyll i för hand" in fran_ny.text
-    assert "2 publikationer" in fran_ny.text
-
-    fran_uppgifter = client.post(
-        "/uppgifter/granska",
-        data={"klistrat": KONSOLUTSKRIFT},
-        headers={"Referer": "http://test/uppgifter"},
-    )
-    assert "PrenlyData" in fran_uppgifter.text
-    assert "2 publikationer" in fran_uppgifter.text
+def test_gamla_lagg_till_sidan_ar_borta(client):
+    """Ett gammalt bokmärke landar på översikten, inte på ett fel."""
+    svar = client.get("/publications/new", follow_redirects=False)
+    assert svar.status_code == 303
+    assert svar.headers["location"] == "/"

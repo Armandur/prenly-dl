@@ -12,7 +12,6 @@
 
 <div class="card-actions" style="margin-bottom:1rem">
   <a href="/katalog" role="button">Katalog</a>
-  <a href="/publications/new" role="button" class="secondary">Lägg till publikation</a>
   <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
 </div>
 
@@ -69,7 +68,7 @@
     </div>
     <div class="card-actions">
       <form method="post" action="/publications/{{ pub.id }}/poll"><button class="secondary outline">Kontrollera nu</button></form>
-      <form method="post" action="/publications/{{ pub.id }}/verify"><button class="secondary outline">Testa uppgifter</button></form>
+      <form method="post" action="/sites/{{ pub.site_id }}/verify"><button class="secondary outline">Testa uppgifter</button></form>
     </div>
   </article>
 {% endfor %}

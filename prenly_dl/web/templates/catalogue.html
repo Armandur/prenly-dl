@@ -10,10 +10,18 @@
   </p>
 </hgroup>
 
+<div class="card-actions" style="margin-bottom:1.5rem">
+  <a href="/uppgifter" role="button">Lägg till sajt</a>
+  <span class="muted">
+    Klistra in uppgifter från konsolsnutten, så fylls katalogen med allt de
+    ger tillgång till.
+  </span>
+</div>
+
 {% if not sajter %}
   <article>
-    Inga sajter ännu. <a href="/uppgifter">Hämta inloggningsuppgifter</a> så
-    byggs katalogen av det kontot har tillgång till.
+    Inga sajter ännu. <a href="/uppgifter">Hämta inloggningsuppgifter</a> för
+    en tidning du prenumererar på, så byggs katalogen av det kontot kommer åt.
   </article>
 {% endif %}
 
@@ -36,13 +44,17 @@
         <form method="post" action="/sites/{{ site.id }}/verify">
           <button class="secondary outline">Testa uppgifter</button>
         </form>
+        <a href="/uppgifter" role="button" class="secondary outline">Förnya uppgifter</a>
+        <form method="post" action="/sites/{{ site.id }}/sync">
+          <button class="secondary outline">Hämta titlar och omslag</button>
+        </form>
       </div>
     </header>
 
     <div class="scroll-x">
     <table>
       <thead>
-        <tr><th>Bevakas</th><th>Publikation</th><th>Titel-ID</th><th>Utgåvor</th><th>Status</th></tr>
+        <tr><th>Bevakas</th><th></th><th>Publikation</th><th>Titel-ID</th><th>Utgåvor</th><th>Status</th></tr>
       </thead>
       <tbody>
       {% for rad in post.rader %}
@@ -57,7 +69,19 @@
               </button>
             </form>
           </td>
-          <td><a href="/publications/{{ pub.slug }}">{{ pub.name }}</a></td>
+          <td class="cover-cell">
+            {% if rad.senaste and rad.senaste.cover_checksum %}
+              <img class="cover cover-small" loading="lazy"
+                   src="/covers/{{ pub.id }}/{{ rad.senaste.cover_checksum }}.jpg"
+                   alt="Omslag {{ pub.name }}">
+            {% else %}
+              <span class="cover cover-small cover-missing"></span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
+            {% if rad.senaste %}<br><span class="muted">{{ rad.senaste.name }}</span>{% endif %}
+          </td>
           <td>{{ pub.title_id }}</td>
           <td class="muted">{{ rad.utgavor or "-" }}</td>
           <td>

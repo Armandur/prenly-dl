@@ -60,6 +60,7 @@ class JobType(str, Enum):
     POLL = "poll"
     DOWNLOAD = "download"
     CATALOGUE = "catalogue"
+    SITE_SYNC = "site_sync"
 
 
 class Site(Base):
@@ -173,6 +174,9 @@ class Job(Base):
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.QUEUED.value)
 
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True
+    )
     publication_id: Mapped[int | None] = mapped_column(
         ForeignKey("publications.id", ondelete="CASCADE"), nullable=True
     )

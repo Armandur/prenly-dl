@@ -14,14 +14,12 @@ from ..config import output_root, timezone_name
 from ..covers import cached_cover_path, fetch_and_cache_cover
 from ..downloader import safe_filename
 from ..db import repository as repo
-from ..db.models import AuthStatus, Publication
+from ..db.models import AuthStatus
 from ..db.session import get_session
 from ..errors import PrenlyError
 from ..importer import (
     extract_configs,
-    import_conf,
     import_directory,
-    strip_json_comments,
 )
 from ..scheduler import (
     DEFAULT_JOB_HISTORY_DAYS,
@@ -33,15 +31,14 @@ from ..scheduler import (
 )
 from ..services import (
     discover_titles,
-    verify_site,
-    publication_output_dir,
     ensure_catalogue_depth,
     poll_publication,
-    verify_credentials,
+    publication_output_dir,
+    verify_site,
 )
 from .auth import check_password, is_authenticated
 from .library import folder_usage
-from .rendering import STATUS_LABELS, back, flash, render
+from .rendering import back, flash, render
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +155,11 @@ def catalogue(request: Request):
                 # Antalet utgåvor räknas i databasen: att ladda relationen
                 # för att mäta dess längd hämtar tusentals rader i onödan.
                 "rader": [
-                    {"pub": p, "utgavor": repo.count_issues(session, p.id)}
+                    {
+                        "pub": p,
+                        "utgavor": repo.count_issues(session, p.id),
+                        "senaste": repo.latest_issue(session, p.id),
+                    }
                     for p in publikationer
                 ],
                 "antal": len(publikationer),
@@ -198,6 +199,20 @@ def verify_site_route(request: Request, site_id: int):
     return back("/katalog")
 
 
+@router.post("/sites/{site_id}/sync")
+def sync_site(request: Request, site_id: int):
+    """Köa en synk av sajtens titlar och deras omslag."""
+    with get_session() as session:
+        if repo.get_site(session, site_id) is None:
+            return back("/katalog")
+        job = repo.enqueue_site_sync(session, site_id)
+    if job is None:
+        flash(request, "Sajten synkas redan", "info")
+    else:
+        flash(request, "Hämtar titlar och omslag, följ förloppet under Jobb", "success")
+    return back("/katalog")
+
+
 @router.post("/sites/{site_id}/delete")
 def delete_site(request: Request, site_id: int):
     with get_session() as session:
@@ -231,13 +246,6 @@ def cover_image(publication_id: int, checksum: str):
     return FileResponse(path, media_type="image/jpeg", headers=headers)
 
 
-@router.get("/publications/new", response_class=HTMLResponse)
-def new_publication_form(request: Request):
-    return render(
-        request, "publication_form.html", fynd=None, fyndfel=None
-    )
-
-
 def _konsolsnutt() -> str:
     return (Path(__file__).parent / "static" / "konsolsnutt.js").read_text(
         encoding="utf-8"
@@ -267,11 +275,6 @@ def _rendera_fynd(
         return render(
             request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel,
             fyndvarning=fyndvarning, flashes=[],
-        )
-    if "/publications/new" in request.headers.get("referer", ""):
-        return render(
-            request, "publication_form.html",
-            fynd=fynd, fyndfel=fyndfel, fyndvarning=fyndvarning,
         )
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
@@ -461,63 +464,6 @@ async def save_pasted(request: Request):
     return back("/katalog")
 
 
-@router.post("/publications")
-def create_publication(
-    request: Request,
-    conf_json: str = Form(""),
-    site: str = Form(""),
-    textalk_auth: str = Form(""),
-    auth: str = Form(""),
-    cdn: str = Form(""),
-    title_id: str = Form(""),
-    name: str = Form(""),
-    prefix: str = Form(""),
-    folder: str = Form(""),
-    watch_limit: int = Form(1),
-):
-    if conf_json.strip():
-        try:
-            conf = json.loads(strip_json_comments(conf_json))
-        except ValueError as error:
-            flash(request, f"Kunde inte tolka JSON: {error}", "error")
-            return back("/publications/new")
-        with get_session() as session:
-            try:
-                publication = import_conf(session, conf)
-            except (KeyError, ValueError) as error:
-                flash(request, f"Konfigurationen saknar uppgifter: {error}", "error")
-                return back("/publications/new")
-            slug = publication.slug
-        flash(request, f"Lade till {slug}", "success")
-        return back(f"/publications/{slug}")
-
-    if not site or not title_id:
-        flash(request, "Sajt och publikations-ID krävs", "error")
-        return back("/publications/new")
-
-    with get_session() as session:
-        display_name = name.strip() or f"Publikation {title_id}"
-        publication = repo.find_publication(session, site, int(title_id))
-        if publication is None:
-            publication = Publication(
-                title_id=int(title_id),
-                site=site.rstrip("/"),
-                slug=repo.unique_slug(session, display_name),
-            )
-        publication.name = display_name
-        publication.textalk_auth = textalk_auth
-        publication.auth = auth
-        publication.cdn = cdn
-        publication.prefix = prefix
-        publication.folder = folder
-        publication.watch_limit = max(1, watch_limit)
-        session.add(publication)
-        session.flush()
-        slug = publication.slug
-    flash(request, f"Lade till {display_name}", "success")
-    return back(f"/publications/{slug}")
-
-
 def _utgavekontext(session, publication, page: int) -> dict:
     """Allt utgåvetabellen behöver för en given sida."""
     # Bläddring bakåt fyller på ur katalogen. Redan hämtade utgåvor
@@ -655,22 +601,6 @@ def jump_to_year(request: Request, slug: str, ar: str = ""):
     # htmx pushar annars årshoppets egen adress; sidan är den delbara.
     svar.headers["HX-Push-Url"] = f"/publications/{slug}?page={kontext['page']}"
     return svar
-
-
-@router.post("/publications/{publication_id}/verify")
-def verify_publication(request: Request, publication_id: int):
-    with get_session() as session:
-        publication = repo.get_publication(session, publication_id)
-        if publication is None:
-            return back("/")
-        status = verify_credentials(session, publication)
-        slug = publication.slug
-        message = publication.auth_message
-    if status is AuthStatus.OK:
-        flash(request, "Uppgifterna fungerar", "success")
-    else:
-        flash(request, f"{STATUS_LABELS.get(status.value, status.value)}: {message}", "error")
-    return back(f"/publications/{slug}")
 
 
 @router.post("/publications/{publication_id}/poll")

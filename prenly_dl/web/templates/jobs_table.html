@@ -12,7 +12,10 @@
       <td>
         {% set pub = publications.get(job.publication_id) %}
         {% set issue = issues.get(job.issue_id) %}
-        {% if pub %}
+        {% set sajt = sites.get(job.site_id) if sites else none %}
+        {% if sajt %}
+          <a href="/katalog">{{ sajt.url }}</a>
+        {% elif pub %}
           <a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
           {% if issue %}<br><span class="muted">{{ issue.name }}</span>{% endif %}
         {% elif issue %}{{ issue.name }}

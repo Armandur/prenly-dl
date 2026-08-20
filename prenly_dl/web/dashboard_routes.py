@@ -42,9 +42,11 @@ def jobs_page(request: Request, status: str = "alla"):
         counts = repo.job_counts(session)
         publications = {p.id: p for p in repo.list_publications(session)}
         issues = {i.id: i for i in repo.list_issues(session, limit=500)}
+        sites = {s.id: s for s in repo.list_sites(session)}
     return render(
         request,
         "jobs.html",
+        sites=sites,
         jobs=jobs,
         counts=counts,
         aktivt_filter=status,
@@ -61,9 +63,11 @@ def jobs_table(request: Request, status: str = "alla"):
         jobs = repo.list_jobs_filtered(session, status, limit=100)
         publications = {p.id: p for p in repo.list_publications(session)}
         issues = {i.id: i for i in repo.list_issues(session, limit=500)}
+        sites = {s.id: s for s in repo.list_sites(session)}
     return render(
         request,
         "jobs_table.html",
+        sites=sites,
         jobs=jobs,
         aktivt_filter=status,
         publications=publications,

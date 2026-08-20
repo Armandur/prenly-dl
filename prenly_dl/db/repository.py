@@ -282,6 +282,23 @@ def enqueue_poll(session: Session, publication_id: int | None = None) -> Job:
     return job
 
 
+def enqueue_site_sync(session: Session, site_id: int) -> Job | None:
+    """Köa en synk av en sajts titlar och deras senaste utgåvor."""
+    pagaende = session.execute(
+        select(Job).where(
+            Job.type == JobType.SITE_SYNC.value,
+            Job.site_id == site_id,
+            Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+        )
+    ).first()
+    if pagaende:
+        return None
+    job = Job(type=JobType.SITE_SYNC.value, status=JobStatus.QUEUED.value, site_id=site_id)
+    session.add(job)
+    session.flush()
+    return job
+
+
 def enqueue_catalogue(session: Session, publication_id: int) -> Job | None:
     """Köa en full kataloghämtning om det inte redan finns en."""
     pagaende = session.execute(
