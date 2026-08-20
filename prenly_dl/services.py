@@ -31,6 +31,7 @@ from .db.models import (
 from .downloader import (
     download_issue,
     preview_output_dir,
+    safe_filename,
     safe_output_directory,
 )
 from .errors import PrenlyAuthError, PrenlyError, PrenlySubscriptionError
@@ -60,6 +61,26 @@ def set_main_publication(
     name: str | None = None,
 ) -> int:
     """Koppla om en bilaga och flytta dess befintliga katalog."""
+    moved, _ = update_publication_storage(
+        session,
+        publication,
+        main_publication,
+        folder=folder,
+        name=name,
+    )
+    return moved
+
+
+def update_publication_storage(
+    session: Session,
+    publication: Publication,
+    main_publication: Publication | None,
+    *,
+    folder: str | None = None,
+    name: str | None = None,
+    prefix: str | None = None,
+) -> tuple[int, int]:
+    """Uppdatera publikationen och flytta eller döp om hämtade filer."""
     if main_publication is publication:
         raise ValueError("En publikation kan inte vara bilaga till sig själv")
     if main_publication is not None and main_publication.main_publication is not None:
@@ -72,12 +93,14 @@ def set_main_publication(
     new_main_id = main_publication.id if main_publication is not None else None
     new_folder = publication.folder if folder is None else folder
     new_name = publication.name if name is None else name
+    new_prefix = publication.prefix if prefix is None else prefix
     if (
         current_main_id == new_main_id
         and publication.folder == new_folder
         and publication.name == new_name
+        and publication.prefix == new_prefix
     ):
-        return 0
+        return 0, 0
 
     old_dir = publication_output_dir(publication)
     old_main = publication.main_publication
@@ -95,10 +118,10 @@ def set_main_publication(
         raise ValueError(f"Målkatalogen finns redan: {new_dir}")
 
     moved = 0
-    if old_dir.is_dir() and old_dir != new_dir:
-        new_dir.parent.mkdir(parents=True, exist_ok=True)
+    renamed = 0
+    paths: list[tuple[Issue, Path, Path]] = []
+    if old_dir.is_dir():
         old_root = old_dir.resolve()
-        paths: list[tuple[Issue, Path]] = []
         for issue in publication.title.issues:
             if not issue.file_path:
                 continue
@@ -107,18 +130,43 @@ def set_main_publication(
                 relative = path.resolve().relative_to(old_root)
             except (OSError, ValueError):
                 continue
-            paths.append((issue, relative))
+            path = old_dir / relative
+            target = new_dir / relative
+            if path.is_file() and publication.prefix != new_prefix:
+                target = new_dir / f"{safe_filename(f'{new_prefix}{issue.name}')}.pdf"
+            paths.append((issue, path, target))
+
+    destinations: dict[Path, Issue] = {}
+    for issue, source, target in paths:
+        if target in destinations:
+            raise ValueError(f"Flera utgåvor skulle få samma filnamn: {target.name}")
+        destinations[target] = issue
+        existing_target = (
+            old_dir / target.relative_to(new_dir) if old_dir != new_dir else target
+        )
+        if source != target and existing_target.exists() and existing_target != source:
+            raise ValueError(f"Målfilen finns redan: {target}")
+
+    if old_dir.is_dir() and old_dir != new_dir:
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
         old_dir.rename(new_dir)
         moved = sum(1 for path in new_dir.rglob("*.pdf") if path.is_file())
-        for issue, relative in paths:
-            issue.file_path = str(new_dir / relative)
+
+    for issue, source, target in paths:
+        current = new_dir / source.relative_to(old_dir) if old_dir != new_dir else source
+        if current != target:
+            current.rename(target)
+            renamed += 1
+        if issue.file_path != str(target):
+            issue.file_path = str(target)
             session.add(issue)
 
     publication.main_publication = main_publication
     publication.folder = new_folder
     publication.name = new_name
+    publication.prefix = new_prefix
     session.add(publication)
-    return moved
+    return moved, renamed
 
 
 def build_issue_preview(

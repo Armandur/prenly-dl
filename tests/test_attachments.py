@@ -56,6 +56,60 @@ def test_bilaga_lagras_under_huvudpublikationen_och_kan_flyttas_tillbaka(db, tem
         assert issue.file_path == str(pdf)
 
 
+def test_prefixbyte_doper_om_hamtade_filer_i_bada_riktningar(db, temp_env):
+    with db() as session:
+        publication = _create_publication(session, 1, "Tidningen")
+        publication.prefix = "Gammal - "
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "1", "name": "2026-08-20"}
+        )
+        old_path = services.publication_output_dir(publication) / "Gammal - 2026-08-20.pdf"
+        old_path.parent.mkdir(parents=True)
+        old_path.write_bytes(b"pdf")
+        issue.file_path = str(old_path)
+        session.add(issue)
+
+        assert services.update_publication_storage(
+            session, publication, None, prefix="Ny - "
+        ) == (0, 1)
+        new_path = old_path.with_name("Ny - 2026-08-20.pdf")
+        assert new_path.is_file()
+        assert not old_path.exists()
+        assert issue.file_path == str(new_path)
+
+        assert services.update_publication_storage(
+            session, publication, None, prefix="Gammal - "
+        ) == (0, 1)
+        assert old_path.is_file()
+        assert not new_path.exists()
+        assert issue.file_path == str(old_path)
+
+
+def test_prefixbyte_vagrar_nar_tva_utgavor_far_samma_namn(db, temp_env):
+    with db() as session:
+        publication = _create_publication(session, 1, "Tidningen")
+        publication.prefix = "x"
+        output_dir = services.publication_output_dir(publication)
+        output_dir.mkdir(parents=True)
+        paths = []
+        for uid, name in (("1", "CON"), ("2", "_CON")):
+            issue, _ = repo.upsert_issue(
+                session, publication, {"uid": uid, "name": name}
+            )
+            path = output_dir / f"x{name}.pdf"
+            path.write_bytes(uid.encode())
+            issue.file_path = str(path)
+            session.add(issue)
+            paths.append(path)
+
+        with pytest.raises(ValueError, match="samma filnamn: _CON.pdf"):
+            services.update_publication_storage(session, publication, None, prefix="")
+
+        assert publication.prefix == "x"
+        assert all(path.is_file() for path in paths)
+        assert not (output_dir / "_CON.pdf").exists()
+
+
 def test_bilaga_far_inte_ha_egen_bilaga(db):
     with db() as session:
         main = _create_publication(session, 1, "Huvud")
@@ -165,7 +219,8 @@ def test_webbformular_kopplar_flyttar_och_tar_bort_bilaga(client, temp_env):
         issue, _ = repo.upsert_issue(
             session, attachment, {"uid": "b1", "name": "2026-08-20"}
         )
-        pdf = services.publication_output_dir(attachment) / "Bilaga - 2026-08-20.pdf"
+        attachment.prefix = "Gammal - "
+        pdf = services.publication_output_dir(attachment) / "Gammal - 2026-08-20.pdf"
         pdf.parent.mkdir(parents=True)
         pdf.write_bytes(b"pdf")
         issue.file_path = str(pdf)
@@ -187,10 +242,13 @@ def test_webbformular_kopplar_flyttar_och_tar_bort_bilaga(client, temp_env):
         follow_redirects=True,
     )
     assert response.status_code == 200
+    assert "flyttade 1 hämtade filer och döpte om 1 hämtade filer" in response.text
     assert "Bilaga till" in response.text
     assert f'value="{main_id}" selected' in response.text
-    nested = temp_env / "output" / "Huvud" / "Bilaga" / pdf.name
+    renamed_name = "Bilaga - 2026-08-20.pdf"
+    nested = temp_env / "output" / "Huvud" / "Bilaga" / renamed_name
     assert nested.is_file()
+    assert not pdf.exists()
     assert "Bilaga till Huvud" in client.get("/").text
     assert "Bilaga till Huvud" in client.get("/katalog").text
 
@@ -207,11 +265,12 @@ def test_webbformular_kopplar_flyttar_och_tar_bort_bilaga(client, temp_env):
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert pdf.is_file()
+    moved_back = temp_env / "output" / "Bilaga" / renamed_name
+    assert moved_back.is_file()
     with get_session() as session:
         attachment = repo.get_publication_by_slug(session, slug)
         assert attachment.main_publication_id is None
-        assert repo.list_issues(session, attachment.id)[0].file_path == str(pdf)
+        assert repo.list_issues(session, attachment.id)[0].file_path == str(moved_back)
 
 
 def test_biblioteksimporten_rapporterar_fel_publikationskatalog(client, temp_env):

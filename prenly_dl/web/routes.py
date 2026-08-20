@@ -36,7 +36,7 @@ from ..services import (
     ensure_catalogue_depth,
     poll_publication,
     publication_output_dir,
-    set_main_publication,
+    update_publication_storage,
     verify_site,
 )
 from .auth import check_password, is_authenticated
@@ -686,17 +686,17 @@ def edit_publication(
                 flash(request, "Huvudpublikationen finns inte", "error")
                 return back(f"/publications/{publication.slug}")
         try:
-            moved = set_main_publication(
+            moved, renamed = update_publication_storage(
                 session,
                 publication,
                 main_publication,
                 folder=folder,
                 name=name.strip() or publication.name,
+                prefix=prefix,
             )
         except ValueError as error:
             flash(request, str(error), "error")
             return back(f"/publications/{publication.slug}")
-        publication.prefix = prefix
         publication.watch_limit = max(1, watch_limit)
         publication.enabled = enabled == "on"
         session.add(publication)
@@ -704,6 +704,8 @@ def edit_publication(
     besked = "Sparat"
     if moved:
         besked += f" och flyttade {moved} hämtade filer"
+    if renamed:
+        besked += f" och döpte om {renamed} hämtade filer"
     flash(request, besked, "success")
     return back(f"/publications/{slug}")
 
