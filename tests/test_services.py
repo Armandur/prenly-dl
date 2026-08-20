@@ -407,3 +407,42 @@ def test_ingen_lasratt_ger_begripligt_fel(db, monkeypatch):
         assert job.status == JobStatus.ERROR.value
         assert "Expressen" in job.error
         assert "läsrätt" in job.error
+
+
+def test_overgivna_tempkataloger_stadas_men_farska_lamnas(temp_env):
+    """Dödas processen mitt i en nedladdning körs aldrig dess finally."""
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    from prenly_dl.config import output_root
+    from prenly_dl.downloader import TEMP_PREFIX, purge_stale_temp_dirs
+
+    publikation = output_root() / "Tidningen"
+    gammal = publikation / f"{TEMP_PREFIX}42-abc"
+    farsk = publikation / f"{TEMP_PREFIX}43-def"
+    for katalog in (gammal, farsk):
+        katalog.mkdir(parents=True)
+        (katalog / "00001.pdf").write_bytes(b"%PDF sida")
+    # En riktig utgåva ska aldrig röras.
+    (publikation / "Tidningen - 2026-01-01.pdf").write_bytes(b"%PDF")
+
+    tva_dygn_sedan = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
+    os.utime(gammal, (tva_dygn_sedan, tva_dygn_sedan))
+
+    assert purge_stale_temp_dirs() == 1
+    assert not gammal.exists()
+    # En färsk katalog kan tillhöra ett jobb som kör just nu.
+    assert farsk.is_dir()
+    assert (publikation / "Tidningen - 2026-01-01.pdf").exists()
+
+
+def test_tempstadningen_ror_inte_publikationsmappar(temp_env):
+    from prenly_dl.config import output_root
+    from prenly_dl.downloader import purge_stale_temp_dirs
+
+    mapp = output_root() / "Tidningen Hemslöjd"
+    mapp.mkdir(parents=True)
+    (mapp / "en.pdf").write_bytes(b"%PDF")
+
+    assert purge_stale_temp_dirs() == 0
+    assert mapp.is_dir()

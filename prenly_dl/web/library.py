@@ -7,15 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import output_root
+from ..downloader import TEMP_PREFIX
 from ..db import repository as repo
 from ..db.models import IssueStatus, utcnow
 from ..downloader import safe_filename
 from ..services import publication_output_dir
 
-# Nedladdningen arbetar i tempkataloger med det här prefixet inne i
-# utdatakatalogen. De innehåller enstaka sidor och hör inte hemma i
-# biblioteket.
-TEMP_PREFIX = "prenly-"
+# Nedladdningens tempkataloger innehåller enstaka sidor och hör inte hemma
+# i biblioteket. Prefixet ägs av downloader, som skapar dem.
 
 
 @dataclass

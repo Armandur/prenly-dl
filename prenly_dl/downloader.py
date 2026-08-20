@@ -28,7 +28,7 @@ from .api import (
     get_issue,
     get_page_checksums,
 )
-from .config import db_path
+from .config import db_path, output_root
 from .errors import PrenlyError
 
 logger = logging.getLogger(__name__)
@@ -102,6 +102,43 @@ def _safe_pdf_path(output_dir: Path, stem: str) -> Path:
         filename, filename_budget, protected_suffix=_PDF_SUFFIX
     )
     return output_dir / filename
+
+
+# Tempkatalogerna skapas inne i utdatakatalogen och städas i ett finally.
+# Dödas processen mitt i - omstart, avbrutet jobb - körs det aldrig, och
+# katalogen blir kvar med sina sidfiler.
+TEMP_PREFIX = "prenly-"
+TEMP_MAX_AGE = timedelta(days=1)
+
+
+def purge_stale_temp_dirs(
+    root: Path | None = None,
+    max_age: timedelta = TEMP_MAX_AGE,
+    now: datetime | None = None,
+) -> int:
+    """Ta bort övergivna tempkataloger under utdatakatalogen.
+
+    Ett dygn som gräns: en nedladdning tar aldrig så lång tid, så allt
+    äldre är med säkerhet övergivet - medan en färsk katalog kan tillhöra
+    ett jobb som kör just nu.
+    """
+    base = Path(root) if root else output_root()
+    if not base.is_dir():
+        return 0
+
+    cutoff = (now or datetime.now(timezone.utc)).timestamp() - max_age.total_seconds()
+    borttagna = 0
+    for path in base.glob(f"*/{TEMP_PREFIX}*"):
+        if not path.is_dir():
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        borttagna += 1
+    return borttagna
 
 
 def preview_cache_root() -> Path:

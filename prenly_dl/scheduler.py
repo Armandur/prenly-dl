@@ -16,7 +16,7 @@ from .config import timezone_name
 from .covers import cover_filename, purge_unused_covers
 from .db import repository as repo
 from .db.session import get_session
-from .downloader import purge_old_previews
+from .downloader import purge_old_previews, purge_stale_temp_dirs
 from .services import execute_job
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,11 @@ def purge_history() -> None:
     previews = purge_old_previews()
     if previews:
         logger.info("Rensade %d gamla förhandsgranskningar", previews)
+    tempkataloger = purge_stale_temp_dirs()
+    if tempkataloger:
+        logger.info(
+            "Rensade %d tempkataloger från avbrutna nedladdningar", tempkataloger
+        )
 
 
 def start_scheduler() -> BackgroundScheduler:
