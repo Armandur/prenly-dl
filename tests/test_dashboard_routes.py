@@ -158,6 +158,72 @@ def test_omslag_hamtas_och_cachas(client, monkeypatch):
     assert hamtningar == ["abc123"]
 
 
+def test_stort_omslag_hamtas_och_cachas_separat(client, monkeypatch):
+    publication_id = _publikation()
+    import prenly_dl.web.routes as routes_module
+
+    hamtningar = []
+
+    def _fejkad(session, creds, title_id, checksum, *, stor=False):
+        hamtningar.append((checksum, stor))
+        path = cover_cache_root()
+        path.mkdir(parents=True, exist_ok=True)
+        target = path / f"{title_id}-{checksum}-stor.jpg"
+        target.write_bytes(b"\xff\xd8\xff stor fejkad jpeg")
+        return target
+
+    monkeypatch.setattr(routes_module, "fetch_and_cache_cover", _fejkad)
+
+    url = f"/covers/{publication_id}/abc123.jpg?stor=1"
+    first = client.get(url)
+    assert first.status_code == 200
+    assert first.headers["content-type"] == "image/jpeg"
+    assert (cover_cache_root() / "4019-abc123-stor.jpg").is_file()
+
+    second = client.get(url)
+    assert second.status_code == 200
+    assert hamtningar == [("abc123", True)]
+
+
+def test_omslagsmallarna_pekar_pa_stor_variant(client):
+    from prenly_dl.db.session import get_session
+
+    publication_id = _publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        repo.upsert_issue(
+            session,
+            publication,
+            {
+                "uid": "omslag",
+                "name": "2026-08-20",
+                "media": {"checksum": "omslag123"},
+            },
+        )
+        slug = publication.slug
+
+    attribut = (
+        f'data-lightbox-src="/covers/{publication_id}/omslag123.jpg?stor=1"'
+    )
+    oversikt = client.get("/")
+    katalog = client.get("/katalog")
+    sajtkort = client.post(
+        f"/katalog/{publication_id}/toggle",
+        data={"aktiv": "on"},
+        headers={"HX-Request": "true"},
+    )
+    detalj = client.get(f"/publications/{slug}")
+    utgavor = client.get(f"/publications/{slug}/issues?page=1")
+
+    assert attribut in oversikt.text
+    assert attribut in katalog.text
+    assert attribut in sajtkort.text
+    assert detalj.text.count(attribut) == 2
+    assert attribut in utgavor.text
+    assert 'id="cover-lightbox"' in oversikt.text
+    assert 'document.body.addEventListener("click"' in oversikt.text
+
+
 def test_kortet_visar_storlek_pa_disk(temp_env, client):
     from prenly_dl.db.session import get_session
     from prenly_dl.web.library import folder_usage

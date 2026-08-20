@@ -49,6 +49,7 @@
             {% if rad.senaste and rad.senaste.cover_checksum %}
               <img class="cover cover-small" loading="lazy"
                    src="/covers/{{ pub.id }}/{{ rad.senaste.cover_checksum }}.jpg"
+                   data-lightbox-src="/covers/{{ pub.id }}/{{ rad.senaste.cover_checksum }}.jpg?stor=1"
                    alt="Omslag {{ pub.name }}">
             {% else %}
               <span class="cover cover-small cover-missing"></span>

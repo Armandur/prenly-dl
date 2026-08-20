@@ -38,6 +38,7 @@
         {% if row.latest and row.latest.cover_checksum %}
           <img class="cover" loading="lazy"
                src="/covers/{{ pub.id }}/{{ row.latest.cover_checksum }}.jpg"
+               data-lightbox-src="/covers/{{ pub.id }}/{{ row.latest.cover_checksum }}.jpg?stor=1"
                alt="Titelsida {{ row.latest.name }}">
         {% else %}
           <span class="cover cover-missing">Inget omslag</span>

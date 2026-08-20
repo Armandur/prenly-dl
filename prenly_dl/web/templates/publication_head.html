@@ -3,6 +3,7 @@
   {% if latest and latest.cover_checksum %}
     <img class="cover cover-large"
          src="/covers/{{ publication.id }}/{{ latest.cover_checksum }}.jpg"
+         data-lightbox-src="/covers/{{ publication.id }}/{{ latest.cover_checksum }}.jpg?stor=1"
          alt="Titelsida {{ latest.name }}">
   {% else %}
     <span class="cover cover-large cover-missing">Inget omslag</span>

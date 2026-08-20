@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Originalen är runt 1200x1500 och en halv megabyte. Korten visar dem i
 # 44x60 och detaljsidan i 110x150, så en nedskalning räcker gott.
 MAX_WIDTH = 400
+LARGE_MAX_WIDTH = 1200
 JPEG_QUALITY = 82
 
 
@@ -36,18 +37,21 @@ def cover_cache_root() -> Path:
     return db_path().parent / "prenly-dl-covers"
 
 
-def cover_filename(title_id: int, checksum: str) -> str:
-    return f"{title_id}-{checksum}.jpg"
+def cover_filename(title_id: int, checksum: str, *, stor: bool = False) -> str:
+    suffix = "-stor" if stor else ""
+    return f"{title_id}-{checksum}{suffix}.jpg"
 
 
-def cached_cover_path(title_id: int, checksum: str) -> Path | None:
+def cached_cover_path(
+    title_id: int, checksum: str, *, stor: bool = False
+) -> Path | None:
     """Sökvägen till ett cachat omslag, eller None om det inte finns."""
-    path = cover_cache_root() / cover_filename(title_id, checksum)
+    path = cover_cache_root() / cover_filename(title_id, checksum, stor=stor)
     return path if path.is_file() else None
 
 
 def fetch_and_cache_cover(
-    session, creds: Credentials, title_id: int, checksum: str
+    session, creds: Credentials, title_id: int, checksum: str, *, stor: bool = False
 ) -> Path | None:
     """Hämta, skala ner och spara ett omslag. Returnerar sökvägen.
 
@@ -56,7 +60,7 @@ def fetch_and_cache_cover(
     """
     if not checksum:
         return None
-    existing = cached_cover_path(title_id, checksum)
+    existing = cached_cover_path(title_id, checksum, stor=stor)
     if existing:
         return existing
 
@@ -84,13 +88,14 @@ def fetch_and_cache_cover(
 
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
-    if image.width > MAX_WIDTH:
-        height = round(image.height * MAX_WIDTH / image.width)
-        image = image.resize((MAX_WIDTH, height), Image.LANCZOS)
+    max_width = LARGE_MAX_WIDTH if stor else MAX_WIDTH
+    if image.width > max_width:
+        height = round(image.height * max_width / image.width)
+        image = image.resize((max_width, height), Image.LANCZOS)
 
     root = cover_cache_root()
     root.mkdir(parents=True, exist_ok=True)
-    target = root / cover_filename(title_id, checksum)
+    target = root / cover_filename(title_id, checksum, stor=stor)
     # Skriv till en tempfil först: en samtidig läsare ska aldrig se en
     # halvskriven bild.
     tmp_target = root / f".{target.name}.{uuid.uuid4().hex}.tmp"
@@ -111,7 +116,14 @@ def purge_unused_covers(giltiga: set[str]) -> int:
         return 0
     borttagna = 0
     for path in root.glob("*.jpg"):
-        if path.name not in giltiga:
+        # Schemaläggaren känner bara till grundfilnamnen. En stor variant
+        # ska leva lika länge som miniatyren med samma checksumma.
+        grundnamn = (
+            f"{path.name.removesuffix('-stor.jpg')}.jpg"
+            if path.name.endswith("-stor.jpg")
+            else path.name
+        )
+        if grundnamn not in giltiga:
             path.unlink(missing_ok=True)
             borttagna += 1
     return borttagna

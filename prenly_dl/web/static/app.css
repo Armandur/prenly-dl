@@ -59,6 +59,20 @@
   padding: 0.2rem;
 }
 .cover-large { width: 140px; height: 190px; border-radius: 6px; }
+dialog.cover-lightbox {
+  border: none; background: transparent; padding: 14px;
+  max-width: 92vw; max-height: 92vh; margin: auto;
+}
+dialog.cover-lightbox::backdrop { background: rgba(9, 9, 16, 0.85); }
+/* showModal() fokuserar dialogen. Den saknar kontroller, så fokusringen
+   tillför inget men skulle rita en ram runt bilden. Escape fungerar ändå. */
+dialog.cover-lightbox:focus,
+dialog.cover-lightbox:focus-visible { outline: none; }
+dialog.cover-lightbox img {
+  display: block; max-width: 100%; max-height: calc(92vh - 28px);
+  border-radius: 8px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+img[data-lightbox-src] { cursor: pointer; }
 .detail-head {
   display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap;
   margin-bottom: 1.5rem;

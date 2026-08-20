@@ -256,7 +256,7 @@ def delete_site(request: Request, site_id: int):
 
 
 @router.get("/covers/{publication_id}/{checksum}.jpg")
-def cover_image(publication_id: int, checksum: str):
+def cover_image(publication_id: int, checksum: str, stor: bool = False):
     """Servera ett cachat omslag, och hämta det vid första förfrågan.
 
     Bilden är innehållsadresserad via checksumman, så den kan cachas hårt
@@ -270,9 +270,12 @@ def cover_image(publication_id: int, checksum: str):
         title_id = publication.title_id
         creds = repo.credentials_for(publication)
 
-    path = cached_cover_path(title_id, checksum)
+    variant = {"stor": True} if stor else {}
+    path = cached_cover_path(title_id, checksum, **variant)
     if path is None:
-        path = fetch_and_cache_cover(build_session(), creds, title_id, checksum)
+        path = fetch_and_cache_cover(
+            build_session(), creds, title_id, checksum, **variant
+        )
     if path is None:
         return JSONResponse({"error": "omslaget kunde inte hämtas"}, status_code=404)
     return FileResponse(path, media_type="image/jpeg", headers=headers)

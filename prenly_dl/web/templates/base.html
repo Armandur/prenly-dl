@@ -72,5 +72,35 @@
       });
     })();
   </script>
+  {# Ett gemensamt dialogelement och delegerad lyssnare behövs eftersom
+     htmx byter ut elementen som innehåller omslagen. #}
+  <dialog class="cover-lightbox" id="cover-lightbox">
+    <img id="cover-lightbox-img" alt="">
+  </dialog>
+  <script>
+    (function () {
+      const dialog = document.getElementById("cover-lightbox");
+      const img = document.getElementById("cover-lightbox-img");
+      if (!dialog || !img) return;
+
+      document.body.addEventListener("click", (event) => {
+        const trigger = event.target.closest("img[data-lightbox-src]");
+        if (!trigger) return;
+        event.preventDefault();
+        img.onerror = function () {
+          img.onerror = null;
+          img.src = trigger.getAttribute("src");
+        };
+        img.alt = trigger.getAttribute("alt") || "";
+        img.src = trigger.getAttribute("data-lightbox-src");
+        dialog.showModal();
+      });
+
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      dialog.addEventListener("close", () => { img.removeAttribute("src"); });
+    })();
+  </script>
 </body>
 </html>

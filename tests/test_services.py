@@ -107,10 +107,12 @@ def test_omslagsrensning_sparar_de_som_anvands(temp_env):
     root.mkdir(parents=True, exist_ok=True)
     (root / "4019-anvands.jpg").write_bytes(b"x")
     (root / "4019-gammal.jpg").write_bytes(b"x")
+    (root / "4019-anvands-stor.jpg").write_bytes(b"x")
 
     assert purge_unused_covers({"4019-anvands.jpg"}) == 1
     assert (root / "4019-anvands.jpg").exists()
     assert not (root / "4019-gammal.jpg").exists()
+    assert (root / "4019-anvands-stor.jpg").exists()
 
 
 def test_forhandsgranskning_syns_inte_i_bibliotek_eller_mappstorlek(
