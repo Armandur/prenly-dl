@@ -11,8 +11,10 @@ import logging
 import re
 import shutil
 import tempfile
+import unicodedata
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 
 import img2pdf
@@ -34,13 +36,72 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int], None]
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+_WINDOWS_MAX_PATH = 259  # 260 inklusive strängens avslutande nolltecken.
+_MAX_COMPONENT_LENGTH = 255
+_HASH_LENGTH = 12
+_PDF_SUFFIX = ".pdf"
+_HASH_MARKER_LENGTH = 1 + _HASH_LENGTH
+_MIN_PDF_FILENAME_LENGTH = 1 + _HASH_MARKER_LENGTH + len(_PDF_SUFFIX)
 PREVIEW_MAX_AGE = timedelta(days=1)
 
 
 def safe_filename(name: str) -> str:
     """Gör en sträng säker som filnamn utan att tappa svenska tecken."""
-    cleaned = _UNSAFE_CHARS.sub("-", name).strip().strip(".")
-    return cleaned or "utgava"
+    normalized = unicodedata.normalize("NFC", name)
+    cleaned = _UNSAFE_CHARS.sub("-", normalized).strip(" .") or "utgava"
+
+    # Windows behandlar enhetsnamnen som reserverade även före en filändelse.
+    base_name = cleaned.split(".", 1)[0].rstrip(" ").upper()
+    if base_name in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned
+
+
+def _shorten_component(
+    value: str, max_length: int, *, protected_suffix: str = ""
+) -> str:
+    """Korta en sökvägskomponent och bevara unikhet deterministiskt."""
+    if len(value) <= max_length:
+        return value
+
+    digest = sha256(value.encode("utf-8")).hexdigest()[:_HASH_LENGTH]
+    marker = f"-{digest}"
+    prefix_length = max_length - len(marker) - len(protected_suffix)
+    if prefix_length < 1:
+        raise PrenlyError("Utdatakatalogens sökväg är för lång")
+    prefix = value[:prefix_length].rstrip(" .") or "utgava"
+    return f"{prefix}{marker}{protected_suffix}"
+
+
+def safe_output_directory(parent: Path, name: str) -> Path:
+    """Bygg en publikationsmapp med plats kvar för ett säkert PDF-namn."""
+    parent = Path(parent).absolute()
+    folder_budget = min(
+        _MAX_COMPONENT_LENGTH,
+        _WINDOWS_MAX_PATH
+        - len(str(parent))
+        - 2  # Avgränsarna före mappen och den framtida PDF-filen.
+        - _MIN_PDF_FILENAME_LENGTH,
+    )
+    folder = _shorten_component(safe_filename(name), folder_budget)
+    return parent / folder
+
+
+def _safe_pdf_path(output_dir: Path, stem: str) -> Path:
+    filename = f"{safe_filename(stem)}{_PDF_SUFFIX}"
+    filename_budget = min(
+        _MAX_COMPONENT_LENGTH,
+        _WINDOWS_MAX_PATH - len(str(output_dir.absolute())) - 1,
+    )
+    filename = _shorten_component(
+        filename, filename_budget, protected_suffix=_PDF_SUFFIX
+    )
+    return output_dir / filename
 
 
 def preview_cache_root() -> Path:
@@ -105,7 +166,7 @@ def download_issue(
 
     issue_data = get_issue(session, creds, title_id, issue_uid)
     stem = safe_filename(f"{prefix}{issue_data.get('name', issue_uid)}")
-    target = output_dir / f"{stem}.pdf"
+    target = _safe_pdf_path(output_dir, stem)
 
     if target.exists() and not force:
         logger.info("Hoppar över %s, filen finns redan", target.name)

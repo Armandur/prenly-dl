@@ -28,7 +28,11 @@ from .db.models import (
     Publication,
     utcnow,
 )
-from .downloader import download_issue, preview_output_dir, safe_filename
+from .downloader import (
+    download_issue,
+    preview_output_dir,
+    safe_output_directory,
+)
 from .errors import PrenlyAuthError, PrenlyError, PrenlySubscriptionError
 
 logger = logging.getLogger(__name__)
@@ -36,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 def publication_output_dir(publication: Publication) -> Path:
     folder = publication.folder.strip() or publication.name
-    return output_root() / safe_filename(folder)
+    return safe_output_directory(output_root(), folder)
 
 
 def build_issue_preview(

@@ -19,6 +19,38 @@ def test_safe_filename_behaller_svenska_tecken():
     assert safe_filename("Tidningen Hemslöjd - 2026/01") == "Tidningen Hemslöjd - 2026-01"
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["CON", "con.pdf", "PRN.txt", "AUX", "NUL", "COM1", "LPT9.pdf"],
+)
+def test_safe_filename_prefixar_windows_reserverade_namn(name):
+    assert safe_filename(name).startswith("_")
+
+
+def test_safe_filename_tar_bort_avslutande_punkter_och_mellanslag():
+    assert safe_filename("Nr 5 . ") == "Nr 5"
+
+
+def test_safe_filename_faller_tillbaka_nar_namnet_blir_tomt():
+    assert safe_filename(" . ") == "utgava"
+
+
+def test_safe_filename_normaliserar_unicode_till_nfc():
+    assert safe_filename("Ra\u0308ven") == safe_filename("Räven") == "Räven"
+
+
+def test_langa_sokvagar_kortas_med_stabil_unik_hash(tmp_path):
+    folder = downloader.safe_output_directory(tmp_path, "Publikation" * 30)
+    path_a = downloader._safe_pdf_path(folder, "Nummer" * 50 + "A")
+    path_b = downloader._safe_pdf_path(folder, "Nummer" * 50 + "B")
+
+    assert len(str(path_a.absolute())) <= 259
+    assert len(str(path_b.absolute())) <= 259
+    assert path_a != path_b
+    assert path_a.suffix == ".pdf"
+    assert downloader._safe_pdf_path(folder, "Nummer" * 50 + "A") == path_a
+
+
 def test_merge_pdfs_behaller_ordningen(tmp_path):
     for index, bredd in enumerate([10, 20, 30], start=1):
         _skriv_pdf(tmp_path / f"{index:05d}.pdf", bredd)
