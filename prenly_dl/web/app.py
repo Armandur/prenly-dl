@@ -38,8 +38,11 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="prenly-dl", lifespan=lifespan)
-    app.add_middleware(SessionMiddleware, secret_key=secret_key())
+    # Ordningen spelar roll: mellanvaror läggs på inifrån och ut, så
+    # SessionMiddleware måste registreras SIST för att hamna ytterst och
+    # hinna sätta request.session innan inloggningskontrollen läser den.
     app.middleware("http")(require_login)
+    app.add_middleware(SessionMiddleware, secret_key=secret_key())
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(router)
 

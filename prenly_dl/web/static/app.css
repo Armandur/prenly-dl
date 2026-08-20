@@ -11,11 +11,19 @@
   display: inline-block; padding: 0.1rem 0.5rem; border-radius: 1rem;
   font-size: 0.75rem; font-weight: 600; white-space: nowrap;
 }
-.badge.ok { background: #1d4d33; color: #9fe0b8; }
-.badge.pending { background: #1d3a4d; color: #9fcbe0; }
-.badge.warn { background: #4d411d; color: #e0d29f; }
-.badge.bad { background: #4d1d1d; color: #e09f9f; }
-.badge.neutral { background: #333; color: #ccc; }
+.badge.ok { background: #d6f0e0; color: #1d4d33; }
+.badge.pending { background: #d6e8f0; color: #1d3a4d; }
+.badge.warn { background: #f0e8d0; color: #4d411d; }
+.badge.bad { background: #f0d6d6; color: #4d1d1d; }
+.badge.neutral { background: #e4e4e4; color: #444; }
+
+@media (prefers-color-scheme: dark) {
+  .badge.ok { background: #1d4d33; color: #9fe0b8; }
+  .badge.pending { background: #1d3a4d; color: #9fcbe0; }
+  .badge.warn { background: #4d411d; color: #e0d29f; }
+  .badge.bad { background: #4d1d1d; color: #e09f9f; }
+  .badge.neutral { background: #333; color: #ccc; }
+}
 
 .grid-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
 .card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
