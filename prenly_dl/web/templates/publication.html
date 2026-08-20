@@ -142,8 +142,11 @@
   <label>X-Textalk-Content-Client-Authorize<input name="textalk_auth" value="{{ publication.textalk_auth }}"></label>
   <label>Sessionstoken (utan "Bearer ")<input name="auth" value="{{ publication.auth }}"></label>
   <p class="muted">
-    Tokens har begränsad livslängd. <a href="/uppgifter">Hämta nya med konsolsnutten</a>
-    och klistra in dem här när statusen blir "Utloggad".
+    Tokens har begränsad livslängd. Blir statusen "Utloggad":
+    <a href="/uppgifter">hämta nya med konsolsnutten</a> och klistra in dem här.
+    Blir den "Ingen prenumeration" räcker inte nya uppgifter - men snutten
+    visar vilka titlar kontot faktiskt kan läsa, och om tidningen finns under
+    ett annat publikations-ID.
   </p>
   <label>
     <input type="checkbox" name="enabled" {% if publication.enabled %}checked{% endif %}>

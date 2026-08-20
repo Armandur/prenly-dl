@@ -79,7 +79,8 @@ om tjänsten kan nås av någon annan, och lägg databasfilen där bara du komme
 ## Hämta inloggningsuppgifter
 
 Uppgifterna har begränsad livslängd och behöver förnyas då och då. När en
-publikation får statusen "Utloggad" i webbui:t:
+publikation får statusen "Utloggad" i webbui:t, eller när du vill se vad
+kontot faktiskt kan läsa vid "Ingen prenumeration":
 
 1. Logga in på tidningens läsarsida i webbläsaren.
 2. Öppna `/uppgifter` i prenly-dl, kopiera konsolsnutten och kör den i
@@ -93,7 +94,9 @@ kontot kan läsa. Ingen letning i Network-fliken, och publikationens ID
 behöver inte vara känt i förväg.
 
 Säger snutten att en publikation inte är läsbar stämmer uppgifterna, men
-prenumerationen täcker inte den titeln.
+prenumerationen täcker inte den titeln. Nya uppgifter hjälper alltså inte
+där - däremot kan tidningen finnas under ett annat publikations-ID, vilket
+snuttens tabell visar.
 
 ### Vad arkivet innehåller
 
