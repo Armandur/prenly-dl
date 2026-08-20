@@ -125,6 +125,8 @@ td.cover-cell { width: 3.5rem; padding-right: 0; }
 }
 .pagination [role="button"] { margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem; }
 
+.rad-otillganglig td { opacity: 0.55; }
+
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator { display: inline; }

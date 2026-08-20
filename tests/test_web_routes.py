@@ -5,13 +5,43 @@ from prenly_dl.db import repository as repo
 from prenly_dl.db.models import Publication
 
 
+# Titlarna som den fejkade sajten svarar med. Bilagan är inte läsbar, så
+# listan täcker både det som går att lägga till och det som inte gör det.
+FEJKADE_TITLAR = [
+    {"id": 3121, "name": "Kundtidning DN", "user_readable": True},
+    {"id": 3181, "name": "Bilagan", "user_readable": True},
+    {"id": 9999, "name": "Utan läsrätt", "user_readable": False},
+]
+
+
 @pytest.fixture
 def client(temp_env, monkeypatch):
     # Schemaläggaren ska inte starta i testerna.
     import prenly_dl.web.app as app_module
+    import prenly_dl.web.routes as routes_module
 
     monkeypatch.setattr(app_module, "start_scheduler", lambda: None)
     monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+    # Inga nätverksanrop i testerna.
+    monkeypatch.setattr(routes_module, "discover_titles", lambda creds: FEJKADE_TITLAR)
+    with TestClient(app_module.create_app()) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def client_utan_api(temp_env, monkeypatch):
+    """Klient där titellistningen misslyckas, så fallbacken kan testas."""
+    import prenly_dl.web.app as app_module
+    import prenly_dl.web.routes as routes_module
+    from prenly_dl.errors import PrenlyAuthError
+
+    monkeypatch.setattr(app_module, "start_scheduler", lambda: None)
+    monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+
+    def _spricker(creds):
+        raise PrenlyAuthError("Inte autentiserad.")
+
+    monkeypatch.setattr(routes_module, "discover_titles", _spricker)
     with TestClient(app_module.create_app()) as test_client:
         yield test_client
 
@@ -149,6 +179,21 @@ def test_uppgiftssidan_visar_konsolsnutten(client):
     assert "prenlyKonfig" in response.text
 
 
+def valbara(html: str) -> list[str]:
+    """Värdena på de kryssrutor en webbläsare faktiskt skickar.
+
+    Titlar utan läsrätt renderas som disabled och följer inte med posten.
+    """
+    import html as htmlmod
+    import re
+
+    return [
+        htmlmod.unescape(m.group(1))
+        for m in re.finditer(r'name="valda" value="([^"]+)"([^>]*)>', html)
+        if "disabled" not in m.group(2)
+    ]
+
+
 KONSOLUTSKRIFT = """
 prenly-dl 13 publikationer på https://etidning.dn.se, 2 läsbara med det här kontot.
 
@@ -171,13 +216,33 @@ Kör prenlyKonfig() för att kopiera den första.
 """
 
 
+def test_listan_byggs_fran_titellistan_inte_fran_blocken(client):
+    """Ett block ska räcka: resten hämtas från Prenly."""
+    svar = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    assert svar.status_code == 200
+    # Bilagan fanns inte i det inklistrade blocket men i titellistan.
+    assert "Bilagan" in svar.text
+    assert "2 publikationer" in svar.text
+    assert "Utan läsrätt" in svar.text
+    assert "Ingen läsrätt" in svar.text
+
+
 def test_granskning_hittar_alla_konfigurationer_i_utskriften(client):
     svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
     assert svar.status_code == 200
-    assert "Hittade 2 publikationer" in svar.text
+    assert "2 publikationer" in svar.text
     assert "Kundtidning DN" in svar.text
     assert "Bilagan" in svar.text
-    # Rubrikerna och statusraden i utskriften ska inte bli publikationer.
+    # Titellistan har tre poster, varav en utan läsrätt som inte går att välja.
+    assert svar.text.count('name="valda"') == 3
+    assert svar.text.count("disabled") == 1
+
+
+def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
+    svar = client_utan_api.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    assert "Kunde inte hämta publikationslistan" in svar.text
+    assert "Inte autentiserad" in svar.text
+    # Blocken som klistrades in går ändå att spara.
     assert svar.text.count('name="valda"') == 2
 
 
@@ -199,17 +264,11 @@ def test_text_utan_konfiguration_ger_besked(client):
 
 def test_sparar_bara_de_valda(client):
     granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
-    import re
-
-    varden = re.findall(r'name="valda" value="([^"]+)"', granskning.text)
+    varden = valbara(granskning.text)
     assert len(varden) == 2
 
-    import html as htmlmod
-
     svar = client.post(
-        "/uppgifter/spara",
-        data={"valda": htmlmod.unescape(varden[0])},
-        follow_redirects=True,
+        "/uppgifter/spara", data={"valda": varden[0]}, follow_redirects=True
     )
     assert "1 tillagda" in svar.text
 
@@ -227,18 +286,19 @@ def test_sparar_utan_val_ger_besked(client):
 
 def test_omsparning_uppdaterar_uppgifterna(client):
     granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
-    import html as htmlmod
-    import re
-
-    varden = [htmlmod.unescape(v) for v in
-              re.findall(r'name="valda" value="([^"]+)"', granskning.text)]
-    client.post("/uppgifter/spara", data={"valda": varden}, follow_redirects=True)
+    client.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning.text)},
+        follow_redirects=True,
+    )
 
     ny_token = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "helt-ny-token"')
     granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny_token})
-    varden2 = [htmlmod.unescape(v) for v in
-               re.findall(r'name="valda" value="([^"]+)"', granskning2.text)]
-    svar = client.post("/uppgifter/spara", data={"valda": varden2}, follow_redirects=True)
+    svar = client.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning2.text)},
+        follow_redirects=True,
+    )
     assert "2 uppdaterade med nya uppgifter" in svar.text
 
     from prenly_dl.db import repository as repo_module
@@ -257,27 +317,30 @@ ETT_BLOCK = """{
 }"""
 
 
-def test_ett_enskilt_block_fungerar(client):
-    svar = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
-    assert "Hittade 1 publikation" in svar.text
+def test_ett_enskilt_block_fungerar(client_utan_api):
+    svar = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    assert "1 publikation" in svar.text
     assert svar.text.count('name="valda"') == 1
 
 
-def test_ett_block_fornyar_befintliga_uppgifter(client):
-    import html as htmlmod
-    import re
-
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
-    varden = [htmlmod.unescape(v) for v in
-              re.findall(r'name="valda" value="([^"]+)"', granskning.text)]
-    client.post("/uppgifter/spara", data={"valda": varden}, follow_redirects=True)
+def test_ett_block_fornyar_befintliga_uppgifter(client_utan_api):
+    granskning = client_utan_api.post(
+        "/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT}
+    )
+    client_utan_api.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning.text)},
+        follow_redirects=True,
+    )
 
     # Bara ett block: den publikationen ska kännas igen och uppdateras.
-    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    granskning2 = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
     assert "Finns redan" in granskning2.text
-    varden2 = [htmlmod.unescape(v) for v in
-               re.findall(r'name="valda" value="([^"]+)"', granskning2.text)]
-    svar = client.post("/uppgifter/spara", data={"valda": varden2}, follow_redirects=True)
+    svar = client_utan_api.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning2.text)},
+        follow_redirects=True,
+    )
     assert "1 uppdaterade med nya uppgifter" in svar.text
 
     from prenly_dl.db import repository as repo_module
@@ -299,7 +362,7 @@ def test_granskning_via_htmx_ger_bara_fragmentet(client):
     )
     assert svar.status_code == 200
     assert 'id="fynd"' in svar.text
-    assert "Hittade 2 publikationer" in svar.text
+    assert "2 publikationer" in svar.text
     # Fragmentet ska inte dra med sig hela sidan igen.
     assert "<!doctype html>" not in svar.text.lower()
     assert "Klistra in resultatet" not in svar.text
@@ -321,7 +384,7 @@ def test_granskning_utan_javascript_ger_hela_sidan(client):
     svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
     assert "<!doctype html>" in svar.text.lower()
     assert "Klistra in resultatet" in svar.text
-    assert "Hittade 2 publikationer" in svar.text
+    assert "2 publikationer" in svar.text
 
 
 def test_inklistringsytan_finns_pa_lagg_till_sidan(client):
@@ -337,7 +400,7 @@ def test_flera_publikationer_gar_lika_bra_fran_lagg_till_sidan(client):
         data={"klistrat": KONSOLUTSKRIFT},
         headers={"HX-Request": "true", "Referer": "http://test/publications/new"},
     )
-    assert "Hittade 2 publikationer" in svar.text
+    assert "2 publikationer" in svar.text
 
 
 def test_utan_javascript_renderas_sidan_man_kom_ifran(client):
@@ -346,8 +409,8 @@ def test_utan_javascript_renderas_sidan_man_kom_ifran(client):
         data={"klistrat": KONSOLUTSKRIFT},
         headers={"Referer": "http://test/publications/new"},
     )
-    assert "Eller fyll i för hand" in fran_ny.text
-    assert "Hittade 2 publikationer" in fran_ny.text
+    assert "Fyll i för hand" in fran_ny.text
+    assert "2 publikationer" in fran_ny.text
 
     fran_uppgifter = client.post(
         "/uppgifter/granska",
@@ -355,4 +418,4 @@ def test_utan_javascript_renderas_sidan_man_kom_ifran(client):
         headers={"Referer": "http://test/uppgifter"},
     )
     assert "PrenlyData" in fran_uppgifter.text
-    assert "Hittade 2 publikationer" in fran_uppgifter.text
+    assert "2 publikationer" in fran_uppgifter.text

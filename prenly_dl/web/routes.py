@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from ..api import Credentials, build_session
 from ..config import output_root, timezone_name
 from ..covers import cached_cover_path, fetch_and_cache_cover
+from ..downloader import safe_filename
 from ..db import repository as repo
 from ..db.models import AuthStatus, Publication
 from ..db.session import get_session
@@ -164,8 +165,7 @@ def cover_image(publication_id: int, checksum: str):
 @router.get("/publications/new", response_class=HTMLResponse)
 def new_publication_form(request: Request):
     return render(
-        request, "publication_form.html", publication=None, titles=None,
-        fynd=None, fyndfel=None,
+        request, "publication_form.html", fynd=None, fyndfel=None
     )
 
 
@@ -183,7 +183,12 @@ def credentials_help(request: Request):
     )
 
 
-def _rendera_fynd(request: Request, fynd: list | None, fyndfel: str | None):
+def _rendera_fynd(
+    request: Request,
+    fynd: list | None,
+    fyndfel: str | None,
+    fyndvarning: str | None = None,
+):
     """Bara resultatlistan för htmx, hela sidan utan JavaScript.
 
     Utan JavaScript renderas den sida användaren kom ifrån - ytan finns
@@ -191,15 +196,17 @@ def _rendera_fynd(request: Request, fynd: list | None, fyndfel: str | None):
     """
     if request.headers.get("HX-Request"):
         return render(
-            request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel, flashes=[]
+            request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel,
+            fyndvarning=fyndvarning, flashes=[],
         )
     if "/publications/new" in request.headers.get("referer", ""):
         return render(
-            request, "publication_form.html", publication=None, titles=None,
-            fynd=fynd, fyndfel=fyndfel,
+            request, "publication_form.html",
+            fynd=fynd, fyndfel=fyndfel, fyndvarning=fyndvarning,
         )
     return render(
-        request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd, fyndfel=fyndfel
+        request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
+        fyndfel=fyndfel, fyndvarning=fyndvarning,
     )
 
 
@@ -220,22 +227,98 @@ def review_pasted(request: Request, klistrat: str = Form("")):
             "konsolen, eller ett helt JSON-block.",
         )
 
-    fynd = []
+    fynd, varning = _fynd_fran_konfigurationer(konfigurationer)
+    return _rendera_fynd(request, fynd, None, varning)
+
+
+def _konfig_for_titel(credentials: dict, titel: dict) -> dict:
+    """Bygg en konfiguration för en titel ur titellistan."""
+    namn = safe_filename(str(titel.get("name") or f"Publikation {titel['id']}"))
+    return {
+        "credentials": credentials,
+        "publication": {"title": titel["id"], "limit": 1},
+        "prefix": f"{namn} - ",
+        "folder": namn,
+    }
+
+
+def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str | None]:
+    """Bygg listan att kryssa i.
+
+    Uppgifterna i texten räcker för att fråga Prenly vilka publikationer
+    kontot har tillgång till, så listan byggs från titellistan i stället
+    för från de block som råkade följa med i det som klistrades in. Ett
+    enda block räcker alltså för att lägga till alla publikationer på en
+    sajt. Svarar inte API:t används blocken som de är.
+    """
+    # Samma sajt kan förekomma i flera block med samma uppgifter.
+    per_sajt: dict[str, dict] = {}
+    for conf in konfigurationer:
+        site = str(conf["credentials"].get("site", "")).rstrip("/")
+        per_sajt.setdefault(site, conf["credentials"])
+
+    valda_titlar = {
+        (str(c["credentials"].get("site", "")).rstrip("/"), int(c["publication"]["title"]))
+        for c in konfigurationer
+    }
+
+    fynd: list[dict] = []
+    misslyckade: list[str] = []
     with get_session() as session:
-        for conf in konfigurationer:
-            site = str(conf["credentials"].get("site", "")).rstrip("/")
-            title_id = int(conf["publication"]["title"])
-            befintlig = repo.find_publication(session, site, title_id)
-            fynd.append({
-                "conf": json.dumps(conf, ensure_ascii=False),
-                "namn": conf.get("folder") or conf.get("prefix", "").strip(" -")
-                        or f"Publikation {title_id}",
-                "title_id": title_id,
-                "site": site,
-                "befintlig": befintlig.name if befintlig else None,
-                "slug": befintlig.slug if befintlig else None,
-            })
-    return _rendera_fynd(request, fynd, None)
+        for site, credentials in per_sajt.items():
+            creds = Credentials(
+                site=site,
+                textalk_auth=credentials.get("textalk-auth", ""),
+                auth=credentials.get("auth", ""),
+                cdn=credentials.get("cdn", "") or "",
+            )
+            try:
+                titlar = discover_titles(creds)
+            except PrenlyError as error:
+                logger.warning("Kunde inte lista titlar för %s: %s", site, error)
+                misslyckade.append(f"{site}: {error}")
+                titlar = None
+
+            if titlar is None:
+                # Falla tillbaka på det som klistrades in.
+                rader = [
+                    (int(c["publication"]["title"]),
+                     c.get("folder") or c.get("prefix", "").strip(" -"),
+                     True, c)
+                    for c in konfigurationer
+                    if str(c["credentials"].get("site", "")).rstrip("/") == site
+                ]
+            else:
+                rader = [
+                    (t["id"], t.get("name") or f"Publikation {t['id']}",
+                     bool(t.get("user_readable")), _konfig_for_titel(credentials, t))
+                    for t in titlar
+                ]
+
+            for title_id, namn, lasbar, conf in rader:
+                befintlig = repo.find_publication(session, site, title_id)
+                fynd.append({
+                    "conf": json.dumps(conf, ensure_ascii=False),
+                    "namn": namn or f"Publikation {title_id}",
+                    "title_id": title_id,
+                    "site": site,
+                    "lasbar": lasbar,
+                    # Kryssa i det som går att läsa och som användaren redan
+                    # pekat ut eller redan har.
+                    "vald": lasbar and (
+                        (site, title_id) in valda_titlar or befintlig is not None
+                    ),
+                    "befintlig": befintlig.name if befintlig else None,
+                    "slug": befintlig.slug if befintlig else None,
+                })
+
+    varning = None
+    if misslyckade:
+        varning = (
+            "Kunde inte hämta publikationslistan, visar bara det som klistrades in - "
+            + "; ".join(misslyckade)
+        )
+    return fynd, varning
 
 
 @router.post("/uppgifter/spara")
@@ -276,48 +359,6 @@ async def save_pasted(request: Request):
         delar.append(f"{trasiga} kunde inte tolkas")
     flash(request, ", ".join(delar).capitalize(), "error" if trasiga else "success")
     return back("/")
-
-
-def _credentials_from_form(site: str, textalk_auth: str, auth: str, cdn: str):
-    return Credentials(site=site, textalk_auth=textalk_auth, auth=auth, cdn=cdn)
-
-
-@router.post("/publications/discover", response_class=HTMLResponse)
-def discover(
-    request: Request,
-    conf_json: str = Form(""),
-    site: str = Form(""),
-    textalk_auth: str = Form(""),
-    auth: str = Form(""),
-    cdn: str = Form(""),
-):
-    """Visa vilka publikationer uppgifterna ger tillgång till."""
-    prefill = {"site": site, "textalk_auth": textalk_auth, "auth": auth, "cdn": cdn}
-    if conf_json.strip():
-        try:
-            conf = json.loads(strip_json_comments(conf_json))
-            credentials = conf.get("credentials", {})
-            prefill = {
-                "site": credentials.get("site", ""),
-                "textalk_auth": credentials.get("textalk-auth", ""),
-                "auth": credentials.get("auth", ""),
-                "cdn": credentials.get("cdn", ""),
-            }
-        except ValueError as error:
-            flash(request, f"Kunde inte tolka JSON: {error}", "error")
-            return back("/publications/new")
-
-    try:
-        titles = discover_titles(_credentials_from_form(**prefill))
-    except PrenlyError as error:
-        flash(request, f"Kunde inte hämta publikationer: {error}", "error")
-        return render(
-            request, "publication_form.html", publication=None, titles=None, prefill=prefill
-        )
-
-    return render(
-        request, "publication_form.html", publication=None, titles=titles, prefill=prefill
-    )
 
 
 @router.post("/publications")

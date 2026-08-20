@@ -76,7 +76,7 @@
 {% if page > 1 or har_fler %}
 <nav class="pagination">
   {% if page > 1 %}
-    <a href="/publications/{{ publication.slug }}?page={{ page - 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page - 1 }}" hx-target="#utgavor" hx-swap="outerHTML show:#utgavor:top" hx-push-url="/publications/{{ publication.slug }}?page={{ page - 1 }}" role="button" class="secondary outline">&larr; Nyare</a>
+    <a href="/publications/{{ publication.slug }}?page={{ page - 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page - 1 }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ page - 1 }}" role="button" class="secondary outline">&larr; Nyare</a>
   {% else %}
     <span></span>
   {% endif %}
@@ -89,7 +89,7 @@
         {% elif nummer == page %}
           <span class="page-current" aria-current="page">{{ nummer }}</span>
         {% else %}
-          <a href="/publications/{{ publication.slug }}?page={{ nummer }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ nummer }}" hx-target="#utgavor" hx-swap="outerHTML show:#utgavor:top" hx-push-url="/publications/{{ publication.slug }}?page={{ nummer }}">{{ nummer }}</a>
+          <a href="/publications/{{ publication.slug }}?page={{ nummer }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ nummer }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ nummer }}">{{ nummer }}</a>
         {% endif %}
       {% endfor %}
     </span>
@@ -98,7 +98,7 @@
   {% endif %}
 
   {% if har_fler %}
-    <a href="/publications/{{ publication.slug }}?page={{ page + 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page + 1 }}" hx-target="#utgavor" hx-swap="outerHTML show:#utgavor:top" hx-push-url="/publications/{{ publication.slug }}?page={{ page + 1 }}" role="button" class="secondary outline">Äldre &rarr;</a>
+    <a href="/publications/{{ publication.slug }}?page={{ page + 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page + 1 }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ page + 1 }}" role="button" class="secondary outline">Äldre &rarr;</a>
   {% else %}
     <span></span>
   {% endif %}

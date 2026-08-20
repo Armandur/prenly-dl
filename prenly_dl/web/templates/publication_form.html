@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Lägg till publikation - prenly-dl{% endblock %}
 {% block content %}
-{% set fill = prefill or {} %}
 <h1>Lägg till publikation</h1>
 
 {% include "paste_form.html" %}
@@ -11,67 +10,23 @@
 </p>
 
 <article>
-  <h2>Se vad uppgifterna ger tillgång till</h2>
-  <p class="muted">
-    Har du redan uppgifterna kan du lista publikationerna direkt här.
-  </p>
-  <form method="post" action="/publications/discover">
-    <textarea name="conf_json" rows="6" placeholder="Klistra in en konfiguration för att se vilka publikationer den ger tillgång till"></textarea>
-    <button class="secondary" type="submit">Visa tillgängliga publikationer</button>
-  </form>
-</article>
-
-{% if titles %}
-<article>
-  <h2>Tillgängliga publikationer på {{ fill.site }}</h2>
-  <div class="scroll-x">
-  <table>
-    <thead><tr><th>ID</th><th>Namn</th><th>Läsbar</th><th></th></tr></thead>
-    <tbody>
-    {% for title in titles %}
-      <tr>
-        <td>{{ title.id }}</td>
-        <td>{{ title.name }}</td>
-        <td>{% if title.user_readable %}<span class="badge ok">ja</span>{% else %}<span class="badge warn">nej</span>{% endif %}</td>
-        <td>
-          <form method="post" action="/publications" class="inline">
-            <input type="hidden" name="site" value="{{ fill.site }}">
-            <input type="hidden" name="textalk_auth" value="{{ fill.textalk_auth }}">
-            <input type="hidden" name="auth" value="{{ fill.auth }}">
-            <input type="hidden" name="cdn" value="{{ fill.cdn }}">
-            <input type="hidden" name="title_id" value="{{ title.id }}">
-            <input type="hidden" name="name" value="{{ title.name }}">
-            <input type="hidden" name="prefix" value="{{ title.name }} - ">
-            <input type="hidden" name="folder" value="{{ title.name }}">
-            <button class="secondary outline">Lägg till</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</article>
-{% endif %}
-
-<article>
-  <h2>Eller fyll i för hand</h2>
+  <h2>Fyll i för hand</h2>
   <form method="post" action="/publications">
     <div class="grid">
-      <label>Namn<input name="name" value="{{ fill.name or '' }}"></label>
-      <label>Sajt<input name="site" value="{{ fill.site or '' }}" placeholder="https://etidning.example.se" required></label>
+      <label>Namn<input name="name" value=""></label>
+      <label>Sajt<input name="site" value="" placeholder="https://etidning.example.se" required></label>
     </div>
     <div class="grid">
-      <label>Publikations-ID<input name="title_id" value="{{ fill.title_id or '' }}" required></label>
+      <label>Publikations-ID<input name="title_id" value="" required></label>
       <label>Antal senaste utgåvor att bevaka<input type="number" name="watch_limit" min="1" value="1"></label>
     </div>
     <div class="grid">
       <label>Prefix på filnamn<input name="prefix" value=""></label>
       <label>Mapp under utdatakatalogen<input name="folder" value=""></label>
     </div>
-    <label>X-Textalk-Content-Client-Authorize<input name="textalk_auth" value="{{ fill.textalk_auth or '' }}"></label>
-    <label>Sessionstoken<input name="auth" value="{{ fill.auth or '' }}"></label>
-    <label>CDN (tomt = standard)<input name="cdn" value="{{ fill.cdn or '' }}"></label>
+    <label>X-Textalk-Content-Client-Authorize<input name="textalk_auth" value=""></label>
+    <label>Sessionstoken<input name="auth" value=""></label>
+    <label>CDN (tomt = standard)<input name="cdn" value=""></label>
     <button type="submit">Lägg till</button>
   </form>
 </article>
