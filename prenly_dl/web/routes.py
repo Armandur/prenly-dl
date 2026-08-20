@@ -15,7 +15,7 @@ from ..config import output_root, timezone_name
 from ..covers import cached_cover_path, fetch_and_cache_cover
 from ..downloader import safe_filename
 from ..db import repository as repo
-from ..db.models import AuthStatus
+from ..db.models import AuthStatus, IssueStatus
 from ..db.session import get_session
 from ..errors import PrenlyError
 from ..importer import (
@@ -122,13 +122,17 @@ def index(request: Request):
                 "filer": antal,
                 "storlek": storlek,
             })
-        job_publications = {p.id: p for p in publications}
+        # Alla publikationer, inte bara de bevakade: ett jobb kan gälla en
+        # publikation som inte längre bevakas, och raden ska ändå namnge den.
+        job_publications = {p.id: p for p in repo.list_publications(session)}
+        job_sites = {site.id: site for site in repo.list_sites(session)}
     return render(
         request,
         "index.html",
         stats=stats,
         rows=rows,
         job_publications=job_publications,
+        job_sites=job_sites,
         jobs=jobs,
         issues=issues,
         next_poll=next_poll_time(),
@@ -523,6 +527,20 @@ async def save_pasted(request: Request):
     return back("/katalog")
 
 
+def _bibliotekssokvag(file_path: str | None) -> str | None:
+    """Sökvägen som /library/file vill ha, eller None om filen är borta."""
+    if not file_path:
+        return None
+    path = Path(file_path)
+    if not path.is_file():
+        return None
+    try:
+        return str(path.resolve().relative_to(output_root().resolve()))
+    except ValueError:
+        # Filen ligger utanför utdatakatalogen och kan inte serveras.
+        return None
+
+
 def _utgavekontext(session, publication, page: int) -> dict:
     """Allt utgåvetabellen behöver för en given sida."""
     # Bläddring bakåt fyller på ur katalogen. Redan hämtade utgåvor
@@ -538,10 +556,20 @@ def _utgavekontext(session, publication, page: int) -> dict:
     # som faktiskt har utgåvor i stället för att visa en tom tabell.
     sista_sidan = max(1, -(-total // PAGE_SIZE))
     page = min(page, sista_sidan)
+    issues = repo.list_issues(
+        session, publication.id, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE
+    )
+    for issue in issues:
+        # Biblioteksrutten vill ha en sökväg relativ utdatakatalogen, och
+        # länken ska bara finnas när filen faktiskt är kvar på disk.
+        issue.rel_path = _bibliotekssokvag(issue.file_path)
     return {
         "publication": publication,
-        "issues": repo.list_issues(
-            session, publication.id, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE
+        "issues": issues,
+        # Pollningen ska bara vara igång medan något faktiskt händer.
+        "pagar": any(
+            i.status in (IssueStatus.QUEUED.value, IssueStatus.DOWNLOADING.value)
+            for i in issues
         ),
         "page": page,
         "page_size": PAGE_SIZE,
@@ -741,7 +769,9 @@ def delete_publication(request: Request, publication_id: int):
 
 
 @router.post("/issues/{issue_id}/download")
-def download_issue_now(request: Request, issue_id: int, force: str = Form("")):
+def download_issue_now(
+    request: Request, issue_id: int, force: str = Form(""), page: int = Form(1)
+):
     with get_session() as session:
         issue = repo.get_issue(session, issue_id)
         if issue is None:
@@ -749,10 +779,20 @@ def download_issue_now(request: Request, issue_id: int, force: str = Form("")):
         publication = repo.get_publication(session, issue.publication_id)
         slug = publication.slug if publication else ""
         job = repo.enqueue_download(session, issue, force=force == "on")
-    if job is None:
-        flash(request, "Utgåvan har redan ett aktivt jobb", "info")
-    else:
-        flash(request, f"Köade nedladdning av {issue.name}", "success")
+        namn = issue.name
+        kontext = _utgavekontext(session, publication, page) if publication else None
+
+    besked = (
+        "Utgåvan har redan ett aktivt jobb"
+        if job is None
+        else f"Köade nedladdning av {namn}"
+    )
+    if request.headers.get("HX-Request") and kontext is not None:
+        kontext.pop("_fel", None)
+        return render(
+            request, "issues_section.html", kortmeddelande=besked, flashes=[], **kontext
+        )
+    flash(request, besked, "info" if job is None else "success")
     return back(f"/publications/{slug}" if slug else "/jobs")
 
 

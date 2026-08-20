@@ -1,6 +1,10 @@
+{# Pollningen är igång bara medan en utgåva är på väg in, annars skulle
+   varje öppen publikationssida fråga i onödan. #}
 <div id="utgavor"
      hx-get="/publications/{{ publication.slug }}/issues?page={{ page }}"
-     hx-trigger="utgavor-andrade from:body" hx-swap="outerHTML">
+     hx-trigger="utgavor-andrade from:body{% if pagar %}, every 5s{% endif %}"
+     hx-swap="outerHTML">
+{% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
 <h2>Utgåvor</h2>
 <div class="issues-toolbar">
   <p class="muted">
@@ -54,7 +58,13 @@
       </td>
       <td>{{ issue.page_count or "-" }}</td>
       <td class="muted" title="{{ issue.file_path or "" }}">
-        {{ issue.file_path.split("/")[-1] if issue.file_path else "-" }}
+        {% if issue.rel_path %}
+          <a href="/library/file/{{ issue.rel_path|urlencode }}" target="_blank" rel="noopener">
+            {{ issue.file_path.split("/")[-1] }}
+          </a>
+        {% elif issue.file_path %}
+          {{ issue.file_path.split("/")[-1] }}
+        {% else %}-{% endif %}
       </td>
       <td>
         <div class="card-actions">
@@ -62,11 +72,19 @@
                 target="_blank" class="inline">
             <button class="secondary outline">Förhandsgranska</button>
           </form>
-          <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
-            <button class="secondary outline">Ladda ner</button>
-          </form>
-          <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
+          {% if issue.status != "done" %}
+            <form method="post" action="/issues/{{ issue.id }}/download" class="inline"
+                  hx-post="/issues/{{ issue.id }}/download"
+                  hx-target="#utgavor" hx-swap="outerHTML">
+              <input type="hidden" name="page" value="{{ page }}">
+              <button class="secondary outline">Ladda ner</button>
+            </form>
+          {% endif %}
+          <form method="post" action="/issues/{{ issue.id }}/download" class="inline"
+                hx-post="/issues/{{ issue.id }}/download"
+                hx-target="#utgavor" hx-swap="outerHTML">
             <input type="hidden" name="force" value="on">
+            <input type="hidden" name="page" value="{{ page }}">
             <button class="secondary outline">Tvinga om</button>
           </form>
         </div>

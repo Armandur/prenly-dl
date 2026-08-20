@@ -635,3 +635,77 @@ def test_katalogkontroll_uppdaterar_utgavorna(client, monkeypatch):
     assert "3 utgåvor i katalogen, 1 nya, 1 köade" in svar.text
     # Utgåvetabellen ska hämtas om, den kan ha fått nya rader.
     assert svar.headers.get("HX-Trigger") == "utgavor-andrade"
+
+
+def test_nedladdning_svarar_med_utgavesektionen(client):
+    """Knappen ska byta ut tabellen på plats, inte ladda om sidan."""
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "9", "name": "2026-01-01"}
+        )
+        issue_id = issue.id
+
+    svar = client.post(
+        f"/issues/{issue_id}/download",
+        data={"page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert svar.status_code == 200
+    assert 'id="utgavor"' in svar.text
+    assert "<!doctype html>" not in svar.text.lower()
+    assert "Köade nedladdning av 2026-01-01" in svar.text
+    # Något är på gång, så tabellen ska hålla sig uppdaterad.
+    assert "every 5s" in svar.text
+
+
+def test_hamtad_utgava_saknar_ladda_ner_knappen(client):
+    """Ladda ner gör ingenting på en hämtad utgåva - visa bara Tvinga om."""
+    from prenly_dl.db.models import IssueStatus
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        klar, _ = repo.upsert_issue(session, publication, {"uid": "1", "name": "klar"})
+        klar.status = IssueStatus.DONE.value
+        ny, _ = repo.upsert_issue(session, publication, {"uid": "2", "name": "ny"})
+        session.add(klar)
+
+    text = client.get(f"/publications/{slug}").text
+    rad_klar = text[text.index("klar"):text.index("klar") + 1400]
+    rad_ny = text[text.index(">ny<") if ">ny<" in text else text.index("ny"):][:1400]
+    assert "Tvinga om" in rad_klar
+    assert "Ladda ner" not in rad_klar.split("Tvinga om")[0]
+    assert "Ladda ner" in rad_ny
+
+
+def test_hamtad_fil_kan_oppnas_fran_utgaveraden(temp_env, client):
+    from prenly_dl.db.models import IssueStatus
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    mapp = temp_env / "output" / "Tidningen"
+    mapp.mkdir(parents=True)
+    fil = mapp / "Tidningen - 2026-01-01.pdf"
+    fil.write_bytes(b"%PDF-1.4 test")
+
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        publication.folder = "Tidningen"
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "1", "name": "2026-01-01"}
+        )
+        issue.status = IssueStatus.DONE.value
+        issue.file_path = str(fil)
+        session.add_all([publication, issue])
+
+    text = client.get(f"/publications/{slug}").text
+    assert "/library/file/Tidningen/Tidningen%20-%202026-01-01.pdf" in text
+
+    # En fil som tagits bort utanför prenly-dl ska inte länkas.
+    fil.unlink()
+    assert "/library/file/Tidningen" not in client.get(f"/publications/{slug}").text

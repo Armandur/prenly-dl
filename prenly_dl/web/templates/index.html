@@ -93,7 +93,9 @@
       <td>{{ job.type }}</td>
       <td>
         {% set pub = job_publications.get(job.publication_id) %}
+        {% set sajt = job_sites.get(job.site_id) %}
         {% if pub %}<a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
+        {% elif sajt %}<a href="/katalog">{{ sajt.url }}</a>
         {% else %}alla publikationer{% endif %}
       </td>
       <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
