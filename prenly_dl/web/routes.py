@@ -139,6 +139,41 @@ def index(request: Request):
 # --------------------------------------------------------------------------
 
 
+def _sajtkontext(session, site) -> dict:
+    """Allt ett sajtkort behöver."""
+    publikationer = repo.list_publications(session, site_id=site.id)
+    return {
+        "site": site,
+        # Antalet utgåvor räknas i databasen: att ladda relationen
+        # för att mäta dess längd hämtar tusentals rader i onödan.
+        "rader": [
+            {
+                "pub": p,
+                "utgavor": repo.count_issues(session, p.id),
+                "senaste": repo.latest_issue(session, p.id),
+            }
+            for p in publikationer
+        ],
+        "antal": len(publikationer),
+        "aktiva": sum(1 for p in publikationer if p.enabled),
+        "lasbara": sum(1 for p in publikationer if p.readable),
+    }
+
+
+def _sajtkort(request: Request, site_id: int, meddelande: str | None = None):
+    """Rendera om ett sajtkort för htmx, eller gå tillbaka till katalogen."""
+    if not request.headers.get("HX-Request"):
+        return back("/katalog")
+    with get_session() as session:
+        site = repo.get_site(session, site_id)
+        if site is None:
+            return back("/katalog")
+        kontext = _sajtkontext(session, site)
+    return render(
+        request, "site_card.html", post=kontext, kortmeddelande=meddelande, flashes=[]
+    )
+
+
 @router.get("/katalog", response_class=HTMLResponse)
 def catalogue(request: Request):
     """Alla kända titlar per sajt, med växel för bevakning.
@@ -147,25 +182,7 @@ def catalogue(request: Request):
     när uppgifterna slutat gälla.
     """
     with get_session() as session:
-        sajter = []
-        for site in repo.list_sites(session):
-            publikationer = repo.list_publications(session, site_id=site.id)
-            sajter.append({
-                "site": site,
-                # Antalet utgåvor räknas i databasen: att ladda relationen
-                # för att mäta dess längd hämtar tusentals rader i onödan.
-                "rader": [
-                    {
-                        "pub": p,
-                        "utgavor": repo.count_issues(session, p.id),
-                        "senaste": repo.latest_issue(session, p.id),
-                    }
-                    for p in publikationer
-                ],
-                "antal": len(publikationer),
-                "aktiva": sum(1 for p in publikationer if p.enabled),
-                "lasbara": sum(1 for p in publikationer if p.readable),
-            })
+        sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(request, "catalogue.html", sajter=sajter)
 
 
@@ -178,8 +195,11 @@ def toggle_publication(request: Request, publication_id: int, aktiv: str = Form(
             return back("/katalog")
         publication.enabled = aktiv == "on"
         session.add(publication)
-        namn, pa = publication.name, publication.enabled
-    flash(request, f"{namn} {'bevakas nu' if pa else 'bevakas inte längre'}", "success")
+        namn, pa, site_id = publication.name, publication.enabled, publication.site_id
+    besked = f"{namn} {'bevakas nu' if pa else 'bevakas inte längre'}"
+    if request.headers.get("HX-Request"):
+        return _sajtkort(request, site_id, besked)
+    flash(request, besked, "success")
     return back("/katalog")
 
 
@@ -192,10 +212,12 @@ def verify_site_route(request: Request, site_id: int):
             return back("/katalog")
         status = verify_site(session, site)
         url, message = site.url, site.auth_message
-    if status is AuthStatus.OK:
-        flash(request, f"Uppgifterna för {url} fungerar", "success")
-    else:
-        flash(request, f"{url}: {message}", "error")
+    besked = (
+        "Uppgifterna fungerar" if status is AuthStatus.OK else f"{message}"
+    )
+    if request.headers.get("HX-Request"):
+        return _sajtkort(request, site_id, besked)
+    flash(request, f"{url}: {besked}", "success" if status is AuthStatus.OK else "error")
     return back("/katalog")
 
 
@@ -206,10 +228,14 @@ def sync_site(request: Request, site_id: int):
         if repo.get_site(session, site_id) is None:
             return back("/katalog")
         job = repo.enqueue_site_sync(session, site_id)
-    if job is None:
-        flash(request, "Sajten synkas redan", "info")
-    else:
-        flash(request, "Hämtar titlar och omslag, följ förloppet under Jobb", "success")
+    besked = (
+        "Sajten synkas redan"
+        if job is None
+        else "Hämtar titlar och omslag, följ förloppet under Jobb"
+    )
+    if request.headers.get("HX-Request"):
+        return _sajtkort(request, site_id, besked)
+    flash(request, besked, "info" if job is None else "success")
     return back("/katalog")
 
 

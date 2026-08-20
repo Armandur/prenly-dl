@@ -222,8 +222,8 @@ def test_granskning_hittar_alla_konfigurationer_i_utskriften(client):
     assert "Kundtidning DN" in svar.text
     assert "Bilagan" in svar.text
     # Titellistan har tre poster, varav en utan läsrätt som inte går att välja.
-    assert svar.text.count('name="valda"') == 3
-    assert svar.text.count("disabled") == 1
+    assert len(alla_varden(svar.text)) == 3
+    assert len(valbara(svar.text)) == 2
 
 
 def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
@@ -231,7 +231,7 @@ def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
     assert "Kunde inte hämta publikationslistan" in svar.text
     assert "Inte autentiserad" in svar.text
     # Blocken som klistrades in går ändå att spara.
-    assert svar.text.count('name="valda"') == 2
+    assert len(valbara(svar.text)) == 2
 
 
 def test_granskning_markerar_befintliga(client):
@@ -330,7 +330,7 @@ ETT_BLOCK = """{
 def test_ett_enskilt_block_fungerar(client_utan_api):
     svar = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
     assert "1 publikation" in svar.text
-    assert svar.text.count('name="valda"') == 1
+    assert len(valbara(svar.text)) == 1
 
 
 def test_ett_block_fornyar_hela_sajten(client_utan_api):

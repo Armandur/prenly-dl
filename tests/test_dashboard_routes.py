@@ -185,3 +185,55 @@ def test_kortet_visar_storlek_pa_disk(temp_env, client):
     svar = client.get("/")
     assert "2 filer på disk" in svar.text
     assert "3.0 kB" in svar.text
+
+
+def _sajt_och_titlar(client):
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        pub, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        pub.enabled = False
+        session.add(pub)
+        session.flush()
+        return site.id, pub.id
+
+
+def test_katalogatgarder_svarar_med_sajtkortet_for_htmx(client, monkeypatch):
+    import prenly_dl.web.routes as routes_module
+
+    monkeypatch.setattr(routes_module, "verify_site", lambda session, site: None)
+    site_id, pub_id = _sajt_och_titlar(client)
+
+    for url in (f"/katalog/{pub_id}/toggle", f"/sites/{site_id}/sync"):
+        svar = client.post(url, data={"aktiv": "on"}, headers={"HX-Request": "true"})
+        assert svar.status_code == 200, url
+        # Bara kortet, inte hela sidan.
+        assert f'id="sajt-{site_id}"' in svar.text, url
+        assert "<!doctype html>" not in svar.text.lower(), url
+        assert "kortbesked" in svar.text, url
+
+
+def test_katalogatgarder_utan_javascript_gar_tillbaka(client):
+    site_id, pub_id = _sajt_och_titlar(client)
+    svar = client.post(
+        f"/katalog/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=False
+    )
+    assert svar.status_code == 303
+    assert svar.headers["location"] == "/katalog"
+
+
+def test_toggle_slar_pa_och_av(client):
+    from prenly_dl.db.session import get_session
+
+    site_id, pub_id = _sajt_och_titlar(client)
+
+    client.post(f"/katalog/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=True)
+    with get_session() as session:
+        assert repo.get_publication(session, pub_id).enabled is True
+
+    client.post(f"/katalog/{pub_id}/toggle", data={"aktiv": ""}, follow_redirects=True)
+    with get_session() as session:
+        assert repo.get_publication(session, pub_id).enabled is False
