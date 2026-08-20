@@ -13,6 +13,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .config import timezone_name
+from .covers import cover_filename, purge_unused_covers
 from .db import repository as repo
 from .db.session import get_session
 from .services import execute_job
@@ -76,8 +77,17 @@ def purge_history() -> None:
             or DEFAULT_JOB_HISTORY_DAYS
         )
         removed = repo.purge_old_jobs(session, days)
+        giltiga = {
+            cover_filename(publication.title_id, issue.cover_checksum)
+            for publication in repo.list_publications(session)
+            for issue in repo.list_issues(session, publication.id, limit=1000)
+            if issue.cover_checksum
+        }
     if removed:
         logger.info("Rensade %d gamla jobb", removed)
+    omslag = purge_unused_covers(giltiga)
+    if omslag:
+        logger.info("Rensade %d omslag som ingen utgåva pekar på", omslag)
 
 
 def start_scheduler() -> BackgroundScheduler:

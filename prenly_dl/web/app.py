@@ -45,8 +45,6 @@ def create_app() -> FastAPI:
     app.middleware("http")(require_login)
     app.add_middleware(SessionMiddleware, secret_key=secret_key())
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    # Jobb- och biblioteksrutterna först: /jobs/{job_id} måste registreras
-    # före den generella publikationsrutten för att inte skuggas.
     app.include_router(dashboard_router)
     app.include_router(router)
 

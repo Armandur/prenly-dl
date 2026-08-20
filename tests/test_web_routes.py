@@ -123,3 +123,18 @@ def test_losenordsskydd_omdirigerar_till_inloggning(temp_env, monkeypatch):
                                 follow_redirects=False).headers["location"] == "/login"
         test_client.post("/login", data={"password": "hemligt"}, follow_redirects=False)
         assert test_client.get("/").status_code == 200
+
+
+def test_htmx_polling_far_204_i_stallet_for_inloggningssidan(temp_env, monkeypatch):
+    """En utloggad htmx-poll ska inte swappa in inloggningsformuläret."""
+    monkeypatch.setenv("PRENLY_PASSWORD", "hemligt")
+    import prenly_dl.web.app as app_module
+
+    monkeypatch.setattr(app_module, "start_scheduler", lambda: None)
+    monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+    with TestClient(app_module.create_app()) as test_client:
+        response = test_client.get(
+            "/stats/cards", headers={"HX-Request": "true"}, follow_redirects=False
+        )
+        assert response.status_code == 204
+        assert "password" not in response.text.lower()

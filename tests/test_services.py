@@ -98,3 +98,39 @@ def test_forlopp_skrivs_utan_att_committa_jobbets_session(db, monkeypatch):
         assert (job.progress_done, job.progress_total) == (40, 68)
         assert job.status == JobStatus.ERROR.value
         assert repo.get_issue(session, issue_id).status == IssueStatus.ERROR.value
+
+
+def test_saknad_kolumn_laggs_till_i_befintlig_databas(temp_env):
+    """create_all lägger inte till kolumner - migreringen ska göra det."""
+    import sqlite3
+
+    from sqlalchemy import inspect
+
+    import prenly_dl.db.session as session_module
+    from prenly_dl.db.session import init_db, make_session_factory
+
+    init_db()
+    db = temp_env / "test.db"
+
+    # Simulera en äldre databas: ta bort force-kolumnen ur jobs.
+    with sqlite3.connect(db) as conn:
+        conn.execute("ALTER TABLE jobs DROP COLUMN force")
+    session_module._engine = None
+    session_module._session_factory = None
+
+    factory = make_session_factory()
+    kolumner = {c["name"] for c in inspect(factory.kw["bind"]).get_columns("jobs")}
+    assert "force" in kolumner
+
+
+def test_omslagsrensning_sparar_de_som_anvands(temp_env):
+    from prenly_dl.covers import cover_cache_root, purge_unused_covers
+
+    root = cover_cache_root()
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "4019-anvands.jpg").write_bytes(b"x")
+    (root / "4019-gammal.jpg").write_bytes(b"x")
+
+    assert purge_unused_covers({"4019-anvands.jpg"}) == 1
+    assert (root / "4019-anvands.jpg").exists()
+    assert not (root / "4019-gammal.jpg").exists()

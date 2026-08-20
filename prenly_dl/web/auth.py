@@ -11,7 +11,7 @@ import hmac
 import os
 
 from fastapi import Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 PASSWORD_ENV_VAR = "PRENLY_PASSWORD"
 SESSION_KEY = "authenticated"
@@ -41,4 +41,8 @@ async def require_login(request: Request, call_next):
     path = request.url.path
     if not auth_enabled() or path.startswith(PUBLIC_PATHS) or is_authenticated(request):
         return await call_next(request)
+    if request.headers.get("HX-Request"):
+        # htmx skulle annars följa omdirigeringen och byta ut det pollande
+        # elementet mot inloggningsformuläret. 204 lämnar sidan orörd.
+        return Response(status_code=204)
     return RedirectResponse("/login", status_code=303)
