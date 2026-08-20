@@ -480,3 +480,17 @@ def test_uppgifter_utan_titellista_sparar_anda_sajten(client_utan_api):
 
     with get_session() as session:
         assert len(repo_module.list_sites(session)) == 1
+
+
+def test_valj_alla_finns_i_fragmentet(client):
+    """Rutan och dess script måste följa med det htmx swappar in."""
+    svar = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": KONSOLUTSKRIFT},
+        headers={"HX-Request": "true"},
+    )
+    assert 'id="valj-alla"' in svar.text
+    # Scriptet ligger i fragmentet, annars körs det aldrig efter en swap.
+    assert "indeterminate" in svar.text
+    # Låsta titlar ska undantas från både räkning och kryssning.
+    assert 'input[name="valda"]:not([disabled])' in svar.text
