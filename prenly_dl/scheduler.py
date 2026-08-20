@@ -65,9 +65,18 @@ def run_worker_tick() -> None:
 
 
 def queue_scheduled_poll() -> None:
+    """Köa dygnets katalogkontroll och en synk per sajt.
+
+    Pollen gäller de bevakade publikationerna. Sajtsynken håller resten av
+    katalogen aktuell - nya titlar och färska omslag - så att den som tittar
+    ser rätt utan att be om det.
+    """
     with get_session() as session:
         repo.enqueue_poll(session)
-    logger.info("Schemalagd katalogkontroll köad")
+        sajter = [site.id for site in repo.list_sites(session)]
+        for site_id in sajter:
+            repo.enqueue_site_sync(session, site_id)
+    logger.info("Schemalagd katalogkontroll köad, samt synk av %d sajter", len(sajter))
 
 
 def purge_history() -> None:

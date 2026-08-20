@@ -268,9 +268,9 @@ def run_site_sync_job(session: Session, job: Job) -> str:
     nya_titlar, totalt = synka_titlar(session, site, get_titles(http, creds, token))
     session.commit()
 
-    publikationer = [
-        p for p in repo.list_publications(session, site_id=site.id) if p.readable
-    ]
+    # Även titlar utan läsrätt: katalogen svarar med senaste utgåvan och
+    # dess omslag oavsett prenumeration, så alla får en bild i katalogen.
+    publikationer = repo.list_publications(session, site_id=site.id)
     job_id = job.id
     omslag = 0
     for index, publication in enumerate(publikationer, start=1):

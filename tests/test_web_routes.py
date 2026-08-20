@@ -494,3 +494,18 @@ def test_valj_alla_finns_i_fragmentet(client):
     assert "indeterminate" in svar.text
     # Låsta titlar ska undantas från både räkning och kryssning.
     assert 'input[name="valda"]:not([disabled])' in svar.text
+
+
+def test_sparande_koar_synk_sa_omslagen_finns_direkt(client):
+    """Katalogen ska ha omslag utan att man ber om det."""
+    granskning = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    svar = client.post(
+        "/uppgifter/spara",
+        data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
+        follow_redirects=True,
+    )
+    assert "hämtar omslag i bakgrunden" in svar.text.lower()
+
+    jobb = client.get("/api/jobs").json()
+    assert [j["type"] for j in jobb] == ["site_sync"]
+    assert jobb[0]["status"] == "queued"

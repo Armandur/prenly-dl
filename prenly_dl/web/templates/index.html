@@ -44,8 +44,15 @@
         {% endif %}
         <div class="card-title">
           <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a><br>
-          <span class="badge {{ pub.auth_status|status_class }}">{{ status_labels.get(pub.auth_status, pub.auth_status) }}</span>
-          {% if not pub.enabled %}<span class="badge neutral">Pausad</span>{% endif %}
+          {# Läsrätten hör till titeln, uppgifterna till sajten. #}
+          {% if not pub.readable %}
+            <span class="badge warn">Ingen läsrätt</span>
+          {% endif %}
+          {% if pub.site.auth_status != "ok" %}
+            <span class="badge {{ pub.site.auth_status|status_class }}">
+              {{ status_labels.get(pub.site.auth_status, pub.site.auth_status) }}
+            </span>
+          {% endif %}
         </div>
       </div>
       <p class="muted">
@@ -64,7 +71,8 @@
           Inget hämtat till disk
         {% endif %}
       </p>
-      {% if pub.auth_message %}<p class="muted">{{ pub.auth_message }}</p>{% endif %}
+      {% if pub.last_error %}<p class="muted">{{ pub.last_error }}</p>
+      {% elif pub.site.auth_message %}<p class="muted">{{ pub.site.auth_message }}</p>{% endif %}
     </div>
     <div class="card-actions">
       <form method="post" action="/publications/{{ pub.id }}/poll"><button class="secondary outline">Kontrollera nu</button></form>

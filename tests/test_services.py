@@ -111,3 +111,43 @@ def test_omslagsrensning_sparar_de_som_anvands(temp_env):
     assert purge_unused_covers({"4019-anvands.jpg"}) == 1
     assert (root / "4019-anvands.jpg").exists()
     assert not (root / "4019-gammal.jpg").exists()
+
+
+def test_sajtsynk_hamtar_omslag_aven_utan_lasratt(db, monkeypatch):
+    """Katalogen svarar oavsett prenumeration, så alla titlar får bild."""
+    from prenly_dl.db.models import Job, JobType
+
+    titlar = [
+        {"id": 1, "name": "Läsbar", "user_readable": True},
+        {"id": 2, "name": "Utan läsrätt", "user_readable": False},
+    ]
+    hamtade = []
+
+    monkeypatch.setattr(services, "build_session", lambda: None)
+    monkeypatch.setattr(services, "get_context_token", lambda *a, **k: "token")
+    monkeypatch.setattr(services, "get_titles", lambda *a, **k: titlar)
+    monkeypatch.setattr(
+        services, "get_catalogue_issues",
+        lambda http, creds, token, title_id, limit=1, offset=0: [
+            {"uid": f"u{title_id}", "name": "2026-01-01",
+             "publication_date": "2026-01-01", "media": {"checksum": f"ck{title_id}"}}
+        ],
+    )
+    monkeypatch.setattr(
+        services, "fetch_and_cache_cover",
+        lambda http, creds, title_id, checksum: hamtade.append(checksum) or True,
+    )
+
+    with db() as session:
+        site = repo.upsert_site(session, "https://a.se", {"textalk-auth": "k", "auth": "t"})
+        job = Job(type=JobType.SITE_SYNC.value, site_id=site.id)
+        session.add(job)
+        session.flush()
+        summering = services.run_site_sync_job(session, job)
+
+    assert sorted(hamtade) == ["ck1", "ck2"]
+    assert "2 omslag" in summering
+
+    with db() as session:
+        for publication in repo.list_publications(session):
+            assert repo.latest_issue(session, publication.id) is not None

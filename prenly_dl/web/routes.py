@@ -499,11 +499,20 @@ async def save_pasted(request: Request):
                 aktiverade += 1
             session.add(publication)
 
+    # Hämta titlarnas senaste utgåva och omslag direkt, så katalogen är
+    # komplett utan att man behöver be om det.
+    with get_session() as session:
+        for url in sajter:
+            site = repo.find_site(session, url)
+            if site is not None:
+                repo.enqueue_site_sync(session, site.id)
+
     delar = [f"{len(sajter)} {'sajt' if len(sajter) == 1 else 'sajter'} sparad"]
     if nya:
         delar.append(f"{nya} nya titlar i katalogen")
     if aktiverade:
         delar.append(f"{aktiverade} aktiverade")
+    delar.append("hämtar omslag i bakgrunden")
     flash(request, ", ".join(delar).capitalize(), "success")
     return back("/katalog")
 
