@@ -11,7 +11,7 @@ from ..config import output_root
 from ..db import repository as repo
 from ..db.models import JobStatus
 from ..db.session import get_session
-from .library import group_by_folder, resolve_file, scan_library
+from .library import group_by_folder, import_existing_files, resolve_file, scan_library
 from .rendering import back, flash, render
 
 logger = logging.getLogger(__name__)
@@ -117,8 +117,7 @@ def jobs_json():
     return JSONResponse(payload)
 
 
-@router.get("/library", response_class=HTMLResponse)
-def library_page(request: Request):
+def _render_library(request: Request, import_report=None):
     files = scan_library()
     return render(
         request,
@@ -127,7 +126,20 @@ def library_page(request: Request):
         total_files=len(files),
         total_bytes=sum(f.size for f in files),
         output_dir=output_root(),
+        import_report=import_report,
     )
+
+
+@router.get("/library", response_class=HTMLResponse)
+def library_page(request: Request):
+    return _render_library(request)
+
+
+@router.post("/library/import", response_class=HTMLResponse)
+def import_library(request: Request):
+    with get_session() as session:
+        report = import_existing_files(session)
+    return _render_library(request, report)
 
 
 @router.get("/library/file/{rel_path:path}")

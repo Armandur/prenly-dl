@@ -36,6 +36,7 @@
         <td>
           <a href="/publications/{{ title.slug }}">{{ title.name }}</a>
           {% if rad.senaste %}<br><span class="muted">{{ rad.senaste.name }}</span>{% endif %}
+          {% if pub.main_publication %}<br><span class="badge">Bilaga till {{ pub.main_publication.name }}</span>{% endif %}
         </td>
         <td>{{ title.title_id }}</td>
         <td class="muted">{{ rad.utgavor or "-" }}</td>

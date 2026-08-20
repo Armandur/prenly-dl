@@ -40,7 +40,85 @@ logger = logging.getLogger(__name__)
 
 def publication_output_dir(publication: Publication) -> Path:
     folder = publication.folder.strip() or publication.name
-    return safe_output_directory(output_root(), folder)
+    if publication.main_publication is None:
+        return safe_output_directory(output_root(), folder)
+    # Bilagan hamnar under huvudpublikationen, och båda leden måste hålla
+    # sig inom sökvägsgränsen.
+    huvud = publication.main_publication
+    huvudmapp = huvud.folder.strip() or huvud.name
+    return safe_output_directory(
+        safe_output_directory(output_root(), huvudmapp), folder
+    )
+
+
+def set_main_publication(
+    session: Session,
+    publication: Publication,
+    main_publication: Publication | None,
+    *,
+    folder: str | None = None,
+    name: str | None = None,
+) -> int:
+    """Koppla om en bilaga och flytta dess befintliga katalog."""
+    if main_publication is publication:
+        raise ValueError("En publikation kan inte vara bilaga till sig själv")
+    if main_publication is not None and main_publication.main_publication is not None:
+        raise ValueError("En bilaga kan inte vara huvudpublikation för en annan bilaga")
+    if main_publication is not None and publication.attachments:
+        raise ValueError("En huvudpublikation med bilagor kan inte själv bli bilaga")
+    current_main_id = (
+        publication.main_publication.id if publication.main_publication is not None else None
+    )
+    new_main_id = main_publication.id if main_publication is not None else None
+    new_folder = publication.folder if folder is None else folder
+    new_name = publication.name if name is None else name
+    if (
+        current_main_id == new_main_id
+        and publication.folder == new_folder
+        and publication.name == new_name
+    ):
+        return 0
+
+    old_dir = publication_output_dir(publication)
+    old_main = publication.main_publication
+    old_folder = publication.folder
+    old_name = publication.name
+    publication.main_publication = main_publication
+    publication.folder = new_folder
+    publication.name = new_name
+    new_dir = publication_output_dir(publication)
+    publication.main_publication = old_main
+    publication.folder = old_folder
+    publication.name = old_name
+
+    if old_dir != new_dir and new_dir.exists():
+        raise ValueError(f"Målkatalogen finns redan: {new_dir}")
+
+    moved = 0
+    if old_dir.is_dir() and old_dir != new_dir:
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        old_root = old_dir.resolve()
+        paths: list[tuple[Issue, Path]] = []
+        for issue in publication.title.issues:
+            if not issue.file_path:
+                continue
+            path = Path(issue.file_path)
+            try:
+                relative = path.resolve().relative_to(old_root)
+            except (OSError, ValueError):
+                continue
+            paths.append((issue, relative))
+        old_dir.rename(new_dir)
+        moved = sum(1 for path in new_dir.rglob("*.pdf") if path.is_file())
+        for issue, relative in paths:
+            issue.file_path = str(new_dir / relative)
+            session.add(issue)
+
+    publication.main_publication = main_publication
+    publication.folder = new_folder
+    publication.name = new_name
+    session.add(publication)
+    return moved
 
 
 def build_issue_preview(

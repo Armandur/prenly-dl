@@ -45,6 +45,7 @@
         {% endif %}
         <div class="card-title">
           <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a>
+          {% if pub.main_publication %}<br><span class="badge">Bilaga till {{ pub.main_publication.name }}</span>{% endif %}
           {# Läsrätten hör till titeln, uppgifterna till sajten. Märkningen
              visas bara när något är fel - annars säger den ingenting. #}
           {%- set visa_lasratt = not pub.readable %}

@@ -36,6 +36,7 @@ from ..services import (
     ensure_catalogue_depth,
     poll_publication,
     publication_output_dir,
+    set_main_publication,
     verify_site,
 )
 from .auth import check_password, is_authenticated
@@ -630,13 +631,31 @@ def publication_detail(request: Request, slug: str, page: int = 1):
         kontext = _utgavekontext(session, publication, page)
         site = repo.site_for_title(session, publication.title_id)
         latest = repo.latest_issue(session, publication.id)
-        jobs = [j for j in repo.list_jobs(session, limit=200)
-                if j.publication_id == publication.id][:20]
+        jobs = [
+            j for j in repo.list_jobs(session, limit=200) if j.publication_id == publication.id
+        ][:20]
+        main_candidates = [
+            candidate
+            for candidate in repo.list_publications(session, enabled_only=True)
+            if candidate.id != publication.id
+            and candidate.main_publication_id is None
+            and not publication.attachments
+        ]
+        if publication.main_publication is not None and all(
+            candidate.id != publication.main_publication.id for candidate in main_candidates
+        ):
+            main_candidates.append(publication.main_publication)
     fel = kontext.pop("_fel")
     if fel:
         flash(request, fel, "error")
     return render(
-        request, "publication.html", latest=latest, jobs=jobs, site=site, **kontext
+        request,
+        "publication.html",
+        latest=latest,
+        jobs=jobs,
+        site=site,
+        main_candidates=main_candidates,
+        **kontext,
     )
 
 
@@ -649,6 +668,7 @@ def edit_publication(
     folder: str = Form(""),
     watch_limit: int = Form(1),
     enabled: str = Form(""),
+    main_publication_id: str = Form(""),
 ):
     """Publikationens egna inställningar. Uppgifterna bor på sajten."""
     with get_session() as session:
@@ -656,14 +676,35 @@ def edit_publication(
         if publication is None:
             flash(request, "Publikationen finns inte", "error")
             return back("/")
-        publication.name = name.strip() or publication.name
+        main_publication = None
+        if main_publication_id:
+            try:
+                main_publication = repo.get_publication(session, int(main_publication_id))
+            except ValueError:
+                main_publication = None
+            if main_publication is None:
+                flash(request, "Huvudpublikationen finns inte", "error")
+                return back(f"/publications/{publication.slug}")
+        try:
+            moved = set_main_publication(
+                session,
+                publication,
+                main_publication,
+                folder=folder,
+                name=name.strip() or publication.name,
+            )
+        except ValueError as error:
+            flash(request, str(error), "error")
+            return back(f"/publications/{publication.slug}")
         publication.prefix = prefix
-        publication.folder = folder
         publication.watch_limit = max(1, watch_limit)
         publication.enabled = enabled == "on"
         session.add(publication)
         slug = publication.slug
-    flash(request, "Sparat", "success")
+    besked = "Sparat"
+    if moved:
+        besked += f" och flyttade {moved} hämtade filer"
+    flash(request, besked, "success")
     return back(f"/publications/{slug}")
 
 

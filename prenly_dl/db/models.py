@@ -136,12 +136,26 @@ class Publication(Base):
     watch_limit: Mapped[int] = mapped_column(Integer, default=1)
     prefix: Mapped[str] = mapped_column(String(255), default="")
     folder: Mapped[str] = mapped_column(String(255), default="")
+    main_publication_id: Mapped[int | None] = mapped_column(
+        ForeignKey("publications.id", ondelete="SET NULL"), nullable=True
+    )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     # Titeluppgifterna behövs varje gång bevakningen används.
     title: Mapped[Title] = relationship(back_populates="publication", lazy="joined")
+    # Huvudpublikationen behövs efter att webbrutternas session har stängts.
+    main_publication: Mapped["Publication | None"] = relationship(
+        remote_side="Publication.id",
+        back_populates="attachments",
+        foreign_keys=[main_publication_id],
+        lazy="joined",
+        join_depth=1,
+    )
+    attachments: Mapped[list["Publication"]] = relationship(
+        back_populates="main_publication", foreign_keys=[main_publication_id]
+    )
 
     @property
     def name(self) -> str:

@@ -16,6 +16,20 @@
     <label>Prefix på filnamn<input name="prefix" value="{{ publication.prefix }}"></label>
     <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
   </div>
+  <label>Bilaga till
+    <select name="main_publication_id">
+      <option value="">Ingen - egen publikation</option>
+      {% for candidate in main_candidates %}
+        <option value="{{ candidate.id }}" {% if publication.main_publication_id == candidate.id %}selected{% endif %}>
+          {{ candidate.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <p class="muted">
+    Bilagor lagras en nivå under huvudpublikationens mapp. Listan visar bevakade
+    huvudpublikationer samt det nuvarande valet.
+  </p>
   <p class="muted">
     Inloggningsuppgifterna väljs automatiskt bland sajterna som ger läsrätt till titeln.
     {% if site %}Aktuell sajt: <a href="/uppgifter">{{ site.url }}</a>.{% endif %} Blir statusen "Utloggad":
