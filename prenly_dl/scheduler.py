@@ -16,6 +16,7 @@ from .config import timezone_name
 from .covers import cover_filename, purge_unused_covers
 from .db import repository as repo
 from .db.session import get_session
+from .downloader import purge_old_previews
 from .services import execute_job
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,9 @@ def purge_history() -> None:
     omslag = purge_unused_covers(giltiga)
     if omslag:
         logger.info("Rensade %d omslag som ingen utgåva pekar på", omslag)
+    previews = purge_old_previews()
+    if previews:
+        logger.info("Rensade %d gamla förhandsgranskningar", previews)
 
 
 def start_scheduler() -> BackgroundScheduler:

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from ..api import Credentials, build_session
 from ..config import output_root, timezone_name
@@ -30,6 +31,7 @@ from ..scheduler import (
     reschedule_poll,
 )
 from ..services import (
+    build_issue_preview,
     discover_titles,
     ensure_catalogue_depth,
     poll_publication,
@@ -752,6 +754,44 @@ def download_issue_now(request: Request, issue_id: int, force: str = Form("")):
     else:
         flash(request, f"Köade nedladdning av {issue.name}", "success")
     return back(f"/publications/{slug}" if slug else "/jobs")
+
+
+@router.post("/issues/{issue_id}/preview")
+async def preview_issue(issue_id: int):
+    """Bygg en tillfällig PDF utan att göra utgåvan till en nedladdning."""
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None:
+            return JSONResponse({"error": "Utgåvan finns inte"}, status_code=404)
+        publication = repo.get_publication(session, issue.publication_id)
+        if publication is None:
+            return JSONResponse({"error": "Publikationen finns inte"}, status_code=404)
+        creds = repo.credentials_for(publication)
+        title_id = publication.title_id
+        issue_uid = issue.uid
+        prefix = publication.prefix
+
+    try:
+        path = await run_in_threadpool(
+            build_issue_preview,
+            creds,
+            title_id,
+            issue_uid,
+            issue_id,
+            prefix,
+        )
+    except PrenlyError as error:
+        logger.warning("Kunde inte förhandsgranska utgåva %s: %s", issue_id, error)
+        return JSONResponse(
+            {"error": f"Förhandsgranskningen misslyckades: {error}"}, status_code=502
+        )
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # --------------------------------------------------------------------------

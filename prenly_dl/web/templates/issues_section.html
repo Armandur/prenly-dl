@@ -58,6 +58,10 @@
       </td>
       <td>
         <div class="card-actions">
+          <form method="post" action="/issues/{{ issue.id }}/preview"
+                target="_blank" class="inline">
+            <button class="secondary outline">Förhandsgranska</button>
+          </form>
           <form method="post" action="/issues/{{ issue.id }}/download" class="inline">
             <button class="secondary outline">Ladda ner</button>
           </form>

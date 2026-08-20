@@ -113,6 +113,91 @@ def test_omslagsrensning_sparar_de_som_anvands(temp_env):
     assert not (root / "4019-gammal.jpg").exists()
 
 
+def test_forhandsgranskning_syns_inte_i_bibliotek_eller_mappstorlek(
+    temp_env, monkeypatch
+):
+    from prenly_dl.config import output_root
+    from prenly_dl.web.library import folder_usage, scan_library
+
+    def _skapar_pdf(
+        session, creds, title_id, uid, output_dir, prefix="", force=False, progress=None
+    ):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / "Tidningen - 2026-01-01.pdf"
+        path.write_bytes(b"pdf")
+        return downloader.DownloadResult(path, 1)
+
+    monkeypatch.setattr(services, "build_session", lambda: None)
+    monkeypatch.setattr(services, "download_issue", _skapar_pdf)
+
+    path = services.build_issue_preview(None, 1, "uid-1", 17, "Tidningen - ")
+
+    assert not path.is_relative_to(output_root())
+    assert scan_library() == []
+    assert folder_usage(output_root() / "Tidningen") == (0, 0)
+
+
+def test_forhandsgranskning_andrar_inte_utgavans_status_eller_filfalt(
+    db, monkeypatch
+):
+    def _skapar_pdf(
+        session, creds, title_id, uid, output_dir, prefix="", force=False, progress=None
+    ):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = output_dir / "Tidningen - 2026-01-01.pdf"
+        path.write_bytes(b"pdf")
+        return downloader.DownloadResult(path, 1)
+
+    monkeypatch.setattr(services, "build_session", lambda: None)
+    monkeypatch.setattr(services, "download_issue", _skapar_pdf)
+
+    with db() as session:
+        publication = _publikation(session)
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "preview", "name": "2026-01-01"}
+        )
+        issue_id = issue.id
+        path = services.build_issue_preview(
+            repo.credentials_for(publication),
+            publication.title_id,
+            issue.uid,
+            issue.id,
+            publication.prefix,
+        )
+
+    assert path.is_file()
+    with db() as session:
+        issue = repo.get_issue(session, issue_id)
+        assert issue.status == IssueStatus.NEW.value
+        assert issue.file_path is None
+        assert issue.downloaded_at is None
+
+
+def test_daglig_stadning_tar_gamla_previews_men_sparar_farska(db):
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    from prenly_dl.downloader import preview_cache_root
+    from prenly_dl.scheduler import purge_history
+
+    root = preview_cache_root()
+    gammal = root / "1"
+    farsk = root / "2"
+    gammal.mkdir(parents=True)
+    farsk.mkdir()
+    (gammal / "gammal.pdf").write_bytes(b"gammal")
+    (farsk / "farsk.pdf").write_bytes(b"farsk")
+
+    nu = datetime.now(timezone.utc)
+    gammal_tid = (nu - timedelta(days=1, minutes=1)).timestamp()
+    os.utime(gammal, (gammal_tid, gammal_tid))
+
+    purge_history()
+
+    assert not gammal.exists()
+    assert (farsk / "farsk.pdf").is_file()
+
+
 def test_sajtsynk_hamtar_omslag_aven_utan_lasratt(db, monkeypatch):
     """Katalogen svarar oavsett prenumeration, så alla titlar får bild."""
     from prenly_dl.db.models import Job, JobType

@@ -12,6 +12,7 @@ import re
 import shutil
 import tempfile
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import img2pdf
@@ -25,6 +26,7 @@ from .api import (
     get_issue,
     get_page_checksums,
 )
+from .config import db_path
 from .errors import PrenlyError
 
 logger = logging.getLogger(__name__)
@@ -32,12 +34,48 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int], None]
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+PREVIEW_MAX_AGE = timedelta(days=1)
 
 
 def safe_filename(name: str) -> str:
     """Gör en sträng säker som filnamn utan att tappa svenska tecken."""
     cleaned = _UNSAFE_CHARS.sub("-", name).strip().strip(".")
     return cleaned or "utgava"
+
+
+def preview_cache_root() -> Path:
+    """Cachekatalogen, medvetet utanför utdatakatalogen."""
+    return db_path().parent / "prenly-dl-previews"
+
+
+def preview_output_dir(issue_id: int) -> Path:
+    return preview_cache_root() / str(issue_id)
+
+
+def purge_old_previews(
+    max_age: timedelta = PREVIEW_MAX_AGE,
+    now: datetime | None = None,
+) -> int:
+    """Ta bort förhandsgranskningar vars cachepost är äldre än `max_age`."""
+    root = preview_cache_root()
+    if not root.is_dir():
+        return 0
+
+    cutoff = (now or datetime.now(timezone.utc)).timestamp() - max_age.total_seconds()
+    borttagna = 0
+    for path in root.iterdir():
+        try:
+            gammal = path.stat().st_mtime < cutoff
+        except OSError:
+            continue
+        if not gammal:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+        borttagna += 1
+    return borttagna
 
 
 class DownloadResult:

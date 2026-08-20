@@ -8,7 +8,13 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from .api import build_session, get_catalogue_issues, get_context_token, get_titles
+from .api import (
+    Credentials,
+    build_session,
+    get_catalogue_issues,
+    get_context_token,
+    get_titles,
+)
 from .config import output_root
 from .covers import fetch_and_cache_cover
 from .db import repository as repo
@@ -22,7 +28,7 @@ from .db.models import (
     Publication,
     utcnow,
 )
-from .downloader import download_issue, safe_filename
+from .downloader import download_issue, preview_output_dir, safe_filename
 from .errors import PrenlyAuthError, PrenlyError, PrenlySubscriptionError
 
 logger = logging.getLogger(__name__)
@@ -31,6 +37,29 @@ logger = logging.getLogger(__name__)
 def publication_output_dir(publication: Publication) -> Path:
     folder = publication.folder.strip() or publication.name
     return output_root() / safe_filename(folder)
+
+
+def build_issue_preview(
+    creds: Credentials,
+    title_id: int,
+    issue_uid: str,
+    issue_id: int,
+    prefix: str = "",
+) -> Path:
+    """Bygg eller återanvänd en PDF utan att ändra utgåvan i databasen."""
+    output_dir = preview_output_dir(issue_id)
+    cached = next(output_dir.glob("*.pdf"), None) if output_dir.is_dir() else None
+    if cached is not None:
+        return cached
+    result = download_issue(
+        build_session(),
+        creds,
+        title_id,
+        issue_uid,
+        output_dir,
+        prefix=prefix,
+    )
+    return result.path
 
 
 def _record_error(session: Session, publication: Publication, error: Exception) -> None:

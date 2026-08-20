@@ -102,6 +102,41 @@ def test_koa_nedladdning_skapar_jobb(client):
     assert jobs[0]["status"] == "queued"
 
 
+def test_forhandsgranska_knappen_serverar_pdf_utan_nedladdningsjobb(
+    client, temp_env, monkeypatch
+):
+    import prenly_dl.web.routes as routes_module
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "preview-9", "name": "2026-01-01"}
+        )
+        issue_id = issue.id
+
+    preview = temp_env / "preview.pdf"
+
+    def _bygg(creds, title_id, uid, preview_issue_id, prefix):
+        assert (title_id, uid, preview_issue_id) == (4019, "preview-9", issue_id)
+        preview.write_bytes(b"%PDF-1.4\n%%EOF")
+        return preview
+
+    monkeypatch.setattr(routes_module, "build_issue_preview", _bygg)
+    monkeypatch.setattr(routes_module, "ensure_catalogue_depth", lambda *args: 0)
+
+    page = client.get(f"/publications/{slug}")
+    assert f'action="/issues/{issue_id}/preview"' in page.text
+    response = client.post(f"/issues/{issue_id}/preview")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline;")
+    assert response.content == b"%PDF-1.4\n%%EOF"
+    assert client.get("/api/jobs").json() == []
+
+
 def test_installningar_avvisar_trasigt_cron(client):
     response = client.post("/settings", data={"poll_cron": "varje dag", "history_days": 30},
                            follow_redirects=True)
