@@ -36,6 +36,19 @@
   {% endif %}
 </div>
 
+{% if issues %}
+<form method="post" id="batch-utgavor" class="batch-rad"
+      action="/publications/{{ publication.id }}/issues/batch"
+      hx-post="/publications/{{ publication.id }}/issues/batch"
+      hx-target="#utgavor" hx-swap="outerHTML">
+  <input type="hidden" name="page" value="{{ page }}">
+  <span class="muted" id="batch-antal">Inget markerat</span>
+  <button type="submit" class="secondary outline" disabled data-batch>Ladda ner markerade</button>
+  <button type="submit" class="secondary outline" disabled data-batch
+          name="force" value="on">Tvinga om markerade</button>
+</form>
+{% endif %}
+
 <div class="scroll-x">
 <table>
   <thead>
@@ -113,18 +126,6 @@
 </table>
 </div>
 
-{% if issues %}
-<form method="post" id="batch-utgavor" class="batch-rad"
-      action="/publications/{{ publication.id }}/issues/batch"
-      hx-post="/publications/{{ publication.id }}/issues/batch"
-      hx-target="#utgavor" hx-swap="outerHTML">
-  <input type="hidden" name="page" value="{{ page }}">
-  <span class="muted" id="batch-antal">Inget markerat</span>
-  <button type="submit" class="secondary outline" disabled data-batch>Ladda ner markerade</button>
-  <button type="submit" class="secondary outline" disabled data-batch
-          name="force" value="on">Tvinga om markerade</button>
-</form>
-{% endif %}
 
 {% if page > 1 or har_fler %}
 <nav class="pagination">
