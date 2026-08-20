@@ -38,10 +38,20 @@
 
 <div class="scroll-x">
 <table>
-  <thead><tr><th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="valj-utgavor" aria-label="Markera alla på sidan"></th>
+      <th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th>
+    </tr>
+  </thead>
   <tbody>
   {% for issue in issues %}
     <tr>
+      <td>
+        <input type="checkbox" class="valj-utgava" form="batch-utgavor"
+               name="valda" value="{{ issue.id }}"
+               aria-label="Markera {{ issue.name }}">
+      </td>
       <td class="cover-cell">
         {% if issue.cover_checksum %}
           <img class="cover cover-small" loading="lazy"
@@ -97,11 +107,24 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="7">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
+    <tr><td colspan="8">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+
+{% if issues %}
+<form method="post" id="batch-utgavor" class="batch-rad"
+      action="/publications/{{ publication.id }}/issues/batch"
+      hx-post="/publications/{{ publication.id }}/issues/batch"
+      hx-target="#utgavor" hx-swap="outerHTML">
+  <input type="hidden" name="page" value="{{ page }}">
+  <span class="muted" id="batch-antal">Inget markerat</span>
+  <button type="submit" class="secondary outline" disabled data-batch>Ladda ner markerade</button>
+  <button type="submit" class="secondary outline" disabled data-batch
+          name="force" value="on">Tvinga om markerade</button>
+</form>
+{% endif %}
 
 {% if page > 1 or har_fler %}
 <nav class="pagination">

@@ -146,6 +146,18 @@ td.cover-cell { width: 3.5rem; padding-right: 0; }
 .rad-otillganglig td { opacity: 0.55; }
 .kortbesked { font-size: 0.85rem; color: var(--pico-primary); }
 
+.batch-rad {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  margin: 0.75rem 0 0;
+}
+/* Pico ger formulärknappar full bredd; här ska de ligga på rad. */
+.batch-rad button {
+  margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem;
+  width: auto; flex: 0 0 auto;
+}
+.batch-rad #batch-antal { margin-right: auto; }
+td .valj-utgava, th #valj-utgavor { margin: 0; }
+
 /* Spinnern lägger sig före texten som ett ::before med egen marginal, så
    innehållet måste centreras aktivt för att stå mitt i knappen. */
 button.forhandsgranska {

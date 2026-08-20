@@ -72,6 +72,52 @@
       });
     })();
   </script>
+  {# Markering av utgåvor. Delegerat på body eftersom htmx byter ut
+     utgåvesektionen vid bläddring, pollning och batchåtgärder - en
+     lyssnare per kryssruta skulle sluta fungera efter första swappen. #}
+  <script>
+    (() => {
+      const rutor = () => [...document.querySelectorAll(".valj-utgava")];
+      const valda = () => rutor().filter((r) => r.checked);
+
+      function uppdatera() {
+        const alla = document.getElementById("valj-utgavor");
+        const antal = document.getElementById("batch-antal");
+        const lista = rutor();
+        const markerade = valda();
+        if (alla) {
+          alla.checked = lista.length > 0 && markerade.length === lista.length;
+          alla.indeterminate = markerade.length > 0 && markerade.length < lista.length;
+        }
+        if (antal) {
+          antal.textContent = markerade.length
+            ? `${markerade.length} av ${lista.length} markerade`
+            : "Inget markerat";
+        }
+        document.querySelectorAll("[data-batch]").forEach((knapp) => {
+          knapp.disabled = markerade.length === 0;
+        });
+      }
+
+      document.body.addEventListener("change", (event) => {
+        if (event.target.id === "valj-utgavor") {
+          rutor().forEach((r) => { r.checked = event.target.checked; });
+          uppdatera();
+        } else if (event.target.classList.contains("valj-utgava")) {
+          uppdatera();
+        }
+      });
+
+      // Raderna byts ut under fötterna vid bläddring, så ett urval från
+      // föregående sida skulle peka på utgåvor man inte längre ser.
+      document.body.addEventListener("htmx:afterSwap", (event) => {
+        if (event.target && event.target.id === "utgavor") uppdatera();
+      });
+      document.addEventListener("DOMContentLoaded", uppdatera);
+      uppdatera();
+    })();
+  </script>
+
   {# Förhandsgranskning: bygget tar minuter för en tjock utgåva, så
      knappen visar det och fliken öppnas först när filen finns. Delegerad
      lyssnare eftersom htmx byter ut utgåvetabellen. #}

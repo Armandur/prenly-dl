@@ -864,6 +864,55 @@ def download_issue_now(
     return back(f"/publications/{slug}" if slug else "/jobs")
 
 
+@router.post("/publications/{publication_id}/issues/batch")
+async def batch_download(request: Request, publication_id: int):
+    """Köa nedladdning av flera markerade utgåvor på en gång."""
+    form = await request.form()
+    valda = [int(v) for v in form.getlist("valda") if str(v).isdigit()]
+    force = form.get("force") == "on"
+    page = int(form.get("page") or 1)
+
+    koade, redan_hamtade, aktiva = 0, 0, 0
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/")
+        slug = publication.slug
+        for issue_id in valda:
+            issue = repo.get_issue(session, issue_id)
+            # Bara utgåvor som hör till den här publikationen, så en
+            # tillrättalagd post inte kan köa jobb någon annanstans.
+            if issue is None or issue.title_id != publication.title_id:
+                continue
+            if not force and issue.status == IssueStatus.DONE.value:
+                # Nedladdningen skulle ändå svara "fanns redan".
+                redan_hamtade += 1
+                continue
+            if repo.enqueue_download(session, issue, force=force) is None:
+                aktiva += 1
+            else:
+                koade += 1
+        kontext = _utgavekontext(session, publication, page)
+
+    if not valda:
+        besked = "Inga utgåvor markerade"
+    else:
+        delar = [f"Köade {koade} {'nedladdning' if koade == 1 else 'nedladdningar'}"]
+        if redan_hamtade:
+            delar.append(f"{redan_hamtade} redan hämtade")
+        if aktiva:
+            delar.append(f"{aktiva} hade redan ett aktivt jobb")
+        besked = ", ".join(delar)
+
+    if request.headers.get("HX-Request"):
+        kontext.pop("_fel", None)
+        return render(
+            request, "issues_section.html", kortmeddelande=besked, flashes=[], **kontext
+        )
+    flash(request, besked, "info" if not koade else "success")
+    return back(f"/publications/{slug}?page={page}")
+
+
 def _forhandsgranskningsdata(issue_id: int):
     """Uppgifterna som krävs för att bygga en förhandsgranskning."""
     with get_session() as session:

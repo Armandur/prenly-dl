@@ -755,3 +755,93 @@ def test_hamtad_utgava_saknar_forhandsgranskning(client):
     text = client.get(f"/publications/{slug}").text
     assert f'data-preview="/issues/{ny_id}/preview"' in text
     assert f'data-preview="/issues/{klar_id}/preview"' not in text
+
+
+def _publikation_med_utgavor(antal=3, hamtade=0):
+    from prenly_dl.db.models import IssueStatus
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug = _skapa_publikation()
+    ids = []
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        for i in range(antal):
+            issue, _ = repo.upsert_issue(
+                session, publication.title, {"uid": str(i), "name": f"2026-01-{i + 1:02d}"}
+            )
+            if i < hamtade:
+                issue.status = IssueStatus.DONE.value
+                session.add(issue)
+            session.flush()
+            ids.append(issue.id)
+    return publication_id, slug, ids
+
+
+def test_batch_koar_flera_utgavor(client):
+    publication_id, slug, ids = _publikation_med_utgavor(3)
+    svar = client.post(
+        f"/publications/{publication_id}/issues/batch",
+        data={"valda": [str(i) for i in ids], "page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert svar.status_code == 200
+    assert "Köade 3 nedladdningar" in svar.text
+    assert len(client.get("/api/jobs").json()) == 3
+
+
+def test_batch_hoppar_over_redan_hamtade(client):
+    """Ladda ner på en hämtad utgåva skulle ändå svara att filen fanns."""
+    publication_id, slug, ids = _publikation_med_utgavor(3, hamtade=2)
+    svar = client.post(
+        f"/publications/{publication_id}/issues/batch",
+        data={"valda": [str(i) for i in ids], "page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert "Köade 1 nedladdning" in svar.text
+    assert "2 redan hämtade" in svar.text
+    assert len(client.get("/api/jobs").json()) == 1
+
+
+def test_batch_tvinga_om_tar_aven_hamtade(client):
+    publication_id, slug, ids = _publikation_med_utgavor(3, hamtade=2)
+    svar = client.post(
+        f"/publications/{publication_id}/issues/batch",
+        data={"valda": [str(i) for i in ids], "force": "on", "page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert "Köade 3 nedladdningar" in svar.text
+
+
+def test_batch_tar_bara_utgavor_i_ratt_publikation(client):
+    """En tillrättalagd post ska inte kunna köa jobb i en annan publikation."""
+    from prenly_dl.db.session import get_session
+
+    publication_id, slug, ids = _publikation_med_utgavor(2)
+    with get_session() as session:
+        site = repo.find_site(session, "https://a.se")
+        annan_titel, _ = repo.upsert_title_access(session, site, 5555, "Annan")
+        annan_utgava, _ = repo.upsert_issue(
+            session, annan_titel, {"uid": "x", "name": "2026-02-01"}
+        )
+        session.flush()
+        frammande_id = annan_utgava.id
+
+    svar = client.post(
+        f"/publications/{publication_id}/issues/batch",
+        data={"valda": [str(ids[0]), str(frammande_id)], "page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert "Köade 1 nedladdning" in svar.text
+    jobb = client.get("/api/jobs").json()
+    assert len(jobb) == 1
+
+
+def test_batch_utan_markering_ger_besked(client):
+    publication_id, slug, ids = _publikation_med_utgavor(2)
+    svar = client.post(
+        f"/publications/{publication_id}/issues/batch",
+        data={"page": 1},
+        headers={"HX-Request": "true"},
+    )
+    assert "Inga utgåvor markerade" in svar.text
+    assert client.get("/api/jobs").json() == []
