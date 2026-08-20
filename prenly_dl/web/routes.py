@@ -40,6 +40,7 @@ from ..services import (
 )
 from .auth import check_password, is_authenticated
 from .library import folder_usage
+from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
 
 logger = logging.getLogger(__name__)
@@ -903,6 +904,7 @@ def settings_page(request: Request):
         history_days = repo.get_setting(
             session, JOB_HISTORY_DAYS_KEY, str(DEFAULT_JOB_HISTORY_DAYS)
         )
+        browse_rotter = browse_roots()
     return render(
         request,
         "settings.html",
@@ -911,6 +913,7 @@ def settings_page(request: Request):
         output_dir=output_root(),
         timezone=timezone_name(),
         next_poll=next_poll_time(),
+        browse_roots=browse_rotter,
     )
 
 
@@ -932,11 +935,20 @@ def save_settings(
     return back("/settings")
 
 
+@router.get("/settings/directories")
+def list_directories(root: str, path: str = ""):
+    """Lista en katalog, efter containment-kontroll här och inte bara i ui:t."""
+    payload = directory_payload(root, path)
+    if payload is None:
+        return JSONResponse({"error": "Katalogen är inte tillåten"}, status_code=403)
+    return JSONResponse(payload)
+
+
 @router.post("/settings/import")
 def import_configs(request: Request, directory: str = Form("")):
-    path = Path(directory.strip()).expanduser()
-    if not path.is_dir():
-        flash(request, f"Katalogen {path} finns inte", "error")
+    path = resolve_allowed_directory(directory.strip())
+    if path is None:
+        flash(request, "Katalogen är inte tillåten eller finns inte", "error")
         return back("/settings")
     with get_session() as session:
         imported = import_directory(session, path)

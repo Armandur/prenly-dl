@@ -1,5 +1,99 @@
 {% extends "base.html" %}
 {% block title %}Inställningar - prenly-dl{% endblock %}
+
+{% block scripts %}
+<dialog id="path-browser"
+        data-empty="Katalogen är tom"
+        data-writable="Skrivbar"
+        data-readonly="Skrivskyddad"
+        data-error="Katalogen kunde inte läsas">
+  <article>
+    <header>
+      <button type="button" class="close" aria-label="Stäng"></button>
+      <h2>Välj katalog</h2>
+      <p class="muted">Du ser containerns monterade kataloger. Sökvägen på värden kan ha ett annat namn.</p>
+    </header>
+    <div class="path-roots">
+      {% for root in browse_roots %}
+      <button type="button" class="secondary outline" data-root="{{ root.id }}">{{ root.path }}</button>
+      {% endfor %}
+    </div>
+    <p><code id="path-browser-current"></code></p>
+    <button type="button" class="secondary outline" id="path-browser-up">En nivå upp</button>
+    <ul id="path-browser-list" class="path-list"></ul>
+    <footer>
+      <button type="button" class="secondary outline" id="path-browser-cancel">Avbryt</button>
+      <button type="button" id="path-browser-select">Välj denna katalog</button>
+    </footer>
+  </article>
+</dialog>
+<script>
+  (() => {
+    const dialog = document.getElementById("path-browser");
+    const list = document.getElementById("path-browser-list");
+    const current = document.getElementById("path-browser-current");
+    const up = document.getElementById("path-browser-up");
+    const select = document.getElementById("path-browser-select");
+    let targetInput = null;
+    let state = null;
+
+    async function load(root, path = "") {
+      const query = new URLSearchParams({ root, path });
+      const response = await fetch(`/settings/directories?${query}`);
+      if (!response.ok) throw new Error(dialog.dataset.error);
+      state = await response.json();
+      current.textContent = state.absolute_path;
+      up.disabled = state.parent === null;
+      select.disabled = !state.writable;
+      select.title = state.writable ? "" : dialog.dataset.readonly;
+      list.replaceChildren();
+      if (!state.directories.length) {
+        const empty = document.createElement("li");
+        empty.className = "muted";
+        empty.textContent = dialog.dataset.empty;
+        list.append(empty);
+      }
+      for (const directory of state.directories) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        const status = document.createElement("small");
+        button.type = "button";
+        button.className = "secondary outline";
+        button.textContent = directory.name;
+        button.addEventListener("click", () => load(state.root, directory.path));
+        status.textContent = directory.writable ? dialog.dataset.writable : dialog.dataset.readonly;
+        status.className = directory.writable ? "path-writable" : "path-readonly";
+        item.append(button, status);
+        list.append(item);
+      }
+    }
+
+    document.querySelectorAll(".path-browser-open").forEach((button) => {
+      button.addEventListener("click", async () => {
+        targetInput = document.getElementById(button.dataset.pathTarget);
+        dialog.showModal();
+        try {
+          const root = document.querySelector("[data-root]").dataset.root;
+          await load(root);
+        } catch (error) {
+          list.textContent = error.message;
+        }
+      });
+    });
+    document.querySelectorAll("[data-root]").forEach((button) => {
+      button.addEventListener("click", () => load(button.dataset.root));
+    });
+    up.addEventListener("click", () => load(state.root, state.parent));
+    select.addEventListener("click", () => {
+      if (targetInput && state && state.writable) targetInput.value = state.absolute_path;
+      dialog.close();
+    });
+    dialog.querySelector(".close").addEventListener("click", () => dialog.close());
+    document.getElementById("path-browser-cancel").addEventListener("click", () => dialog.close());
+  })();
+</script>
+{% endblock %}
+
 {% block content %}
 <h1>Inställningar</h1>
 
@@ -31,7 +125,19 @@
   <h2>Importera gamla konfigurationsfiler</h2>
   <p class="muted">Läser in alla <code>*.json</code> i katalogen och skapar publikationer av dem.</p>
   <form method="post" action="/settings/import">
-    <label>Katalog<input name="directory" placeholder="/conf" required></label>
+    <label>Katalog
+      <span role="group" class="path-field">
+        <input id="import-directory" name="directory" placeholder="/conf" required>
+        <button type="button" class="secondary outline path-browser-open"
+                data-path-target="import-directory" aria-label="Bläddra bland kataloger">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+        </button>
+      </span>
+      <small class="muted">
+        Väljaren visar bara kataloger som är monterade i containern, inte
+        värdens fullständiga katalogträd.
+      </small>
+    </label>
     <button class="secondary" type="submit">Importera</button>
   </form>
 </article>

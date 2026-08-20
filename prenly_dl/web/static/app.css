@@ -178,3 +178,22 @@ progress { margin: 0; width: 8rem; }
   .card-actions button,
   .card-actions [role="button"] { width: 100%; display: block; }
 }
+.path-field { align-items: stretch; }
+.path-field .path-browser-open { flex: 0 0 3rem; margin: 0; padding: 0.7rem; }
+.path-browser-open svg {
+  display: block; width: 1.2rem; height: 1.2rem; margin: auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+}
+.path-roots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.path-roots button, #path-browser-up { width: auto; margin: 0; padding: 0.4rem 0.7rem; }
+.path-list { list-style: none; padding: 0; margin: 1rem 0; }
+.path-list li { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.4rem; }
+.path-list button { flex: 1; margin: 0; padding: 0.45rem 0.7rem; text-align: left; }
+.path-writable { color: #2e9e5b; }
+.path-readonly { color: #c9403f; }
+
+@media (prefers-color-scheme: dark) {
+  .path-writable { color: #9fe0b8; }
+  .path-readonly { color: #e09f9f; }
+}
+
