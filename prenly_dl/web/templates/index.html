@@ -53,6 +53,13 @@
         {% else %}
           Inga kända utgåvor
         {% endif %}
+        <br>
+        {% if row.filer %}
+          {{ row.filer }} {{ "fil" if row.filer == 1 else "filer" }} på disk ·
+          {{ row.storlek|human_size }}
+        {% else %}
+          Inget hämtat till disk
+        {% endif %}
       </p>
       {% if pub.auth_message %}<p class="muted">{{ pub.auth_message }}</p>{% endif %}
     </div>
@@ -67,17 +74,22 @@
 <h2>Senaste jobb</h2>
 <div class="scroll-x">
 <table>
-  <thead><tr><th>Tid</th><th>Typ</th><th>Status</th><th>Resultat</th></tr></thead>
+  <thead><tr><th>Tid</th><th>Typ</th><th>Gäller</th><th>Status</th><th>Resultat</th></tr></thead>
   <tbody>
   {% for job in jobs %}
     <tr>
-      <td>{{ job.created_at|local_time }}</td>
+      <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
       <td>{{ job.type }}</td>
+      <td>
+        {% set pub = job_publications.get(job.publication_id) %}
+        {% if pub %}<a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
+        {% else %}alla publikationer{% endif %}
+      </td>
       <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
       <td>{{ job.error or job.message or "-" }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="4">Inga jobb ännu</td></tr>
+    <tr><td colspan="5">Inga jobb ännu</td></tr>
   {% endfor %}
   </tbody>
 </table>

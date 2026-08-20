@@ -27,11 +27,13 @@ from ..scheduler import (
 )
 from ..services import (
     discover_titles,
+    publication_output_dir,
     ensure_catalogue_depth,
     poll_publication,
     verify_credentials,
 )
 from .auth import check_password, is_authenticated
+from .library import folder_usage
 from .rendering import STATUS_LABELS, back, flash, render
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,28 @@ router = APIRouter()
 
 # Antal utgåvor per sida i utgåvetabellen.
 PAGE_SIZE = 20
+# Hur många sidnummer som renderas runt den aktuella. En publikation som
+# samlat på sig tusen utgåvor ska inte ge femtio länkar.
+PAGE_WINDOW = 2
+
+
+def sidnummer(aktuell: int, sista: int) -> list[int | None]:
+    """Sidnumren att visa: första, sista och ett fönster runt den aktuella.
+
+    None markerar ett hopp i följden och renderas som ellips.
+    """
+    if sista <= 7:
+        return list(range(1, sista + 1))
+    visa = {1, sista}
+    visa.update(range(max(1, aktuell - PAGE_WINDOW), min(sista, aktuell + PAGE_WINDOW) + 1))
+    ut: list[int | None] = []
+    forra = 0
+    for nummer in sorted(visa):
+        if forra and nummer > forra + 1:
+            ut.append(None)
+        ut.append(nummer)
+        forra = nummer
+    return ut
 
 
 # --------------------------------------------------------------------------
@@ -81,15 +105,22 @@ def index(request: Request):
         stats = repo.dashboard_stats(session)
         jobs = repo.list_jobs(session, limit=10)
         issues = repo.list_issues(session, limit=10)
-        rows = [
-            {"publication": publication, "latest": repo.latest_issue(session, publication.id)}
-            for publication in publications
-        ]
+        rows = []
+        for publication in publications:
+            antal, storlek = folder_usage(publication_output_dir(publication))
+            rows.append({
+                "publication": publication,
+                "latest": repo.latest_issue(session, publication.id),
+                "filer": antal,
+                "storlek": storlek,
+            })
+        job_publications = {p.id: p for p in publications}
     return render(
         request,
         "index.html",
         stats=stats,
         rows=rows,
+        job_publications=job_publications,
         jobs=jobs,
         issues=issues,
         next_poll=next_poll_time(),
@@ -255,6 +286,14 @@ def publication_detail(request: Request, slug: str, page: int = 1):
         )
         latest = repo.latest_issue(session, publication.id)
         har_fler = total > page * PAGE_SIZE or not publication.catalogue_complete
+        # Sidnummer och årshopp kräver att katalogen är helt hämtad: annars
+        # räknas de ut från halva underlaget och pekar fel.
+        sidor = sidnummer(page, sista_sidan) if publication.catalogue_complete else []
+        ar_lista = (
+            repo.issue_years(session, publication.id)
+            if publication.catalogue_complete
+            else []
+        )
         jobs = [j for j in repo.list_jobs(session, limit=200)
                 if j.publication_id == publication.id][:20]
     return render(
@@ -268,6 +307,9 @@ def publication_detail(request: Request, slug: str, page: int = 1):
         page_size=PAGE_SIZE,
         total_issues=total,
         har_fler=har_fler,
+        sidor=sidor,
+        sista_sidan=sista_sidan,
+        ar_lista=ar_lista,
     )
 
 
@@ -303,6 +345,38 @@ def edit_publication(
         slug = publication.slug
     flash(request, "Sparat", "success")
     return back(f"/publications/{slug}")
+
+
+@router.post("/publications/{publication_id}/catalogue")
+def fetch_catalogue(request: Request, publication_id: int):
+    """Köa en full kataloghämtning."""
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/")
+        slug = publication.slug
+        job = repo.enqueue_catalogue(session, publication_id)
+    if job is None:
+        flash(request, "Katalogen hämtas redan", "info")
+    else:
+        flash(request, "Hämtar hela katalogen, följ förloppet under Jobb", "success")
+    return back(f"/publications/{slug}")
+
+
+@router.get("/publications/{slug}/year/{ar}")
+def jump_to_year(request: Request, slug: str, ar: str):
+    """Hoppa till sidan där ett år börjar.
+
+    Utgåvor har inget sidnummer i användarens huvud - de har ett årtal.
+    Årshoppet räknar om till sidnummer och behåller ?page som enda adress.
+    """
+    with get_session() as session:
+        publication = repo.get_publication_by_slug(session, slug)
+        if publication is None:
+            flash(request, "Publikationen finns inte", "error")
+            return back("/")
+        nyare = repo.issues_newer_than_year(session, publication.id, ar)
+    return back(f"/publications/{slug}?page={nyare // PAGE_SIZE + 1}")
 
 
 @router.post("/publications/{publication_id}/verify")

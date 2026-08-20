@@ -137,3 +137,30 @@ def test_omslag_hamtas_och_cachas(client, monkeypatch):
     second = client.get(f"/covers/{publication_id}/abc123.jpg")
     assert second.status_code == 200
     assert hamtningar == ["abc123"]
+
+
+def test_kortet_visar_storlek_pa_disk(temp_env, client):
+    from prenly_dl.db.session import get_session
+    from prenly_dl.web.library import folder_usage
+
+    with get_session() as session:
+        publication = Publication(
+            title_id=4019, name="Tidningen", slug="tidningen", site="https://a.se",
+            textalk_auth="k", auth="t", folder="Tidningen",
+        )
+        session.add(publication)
+
+    mapp = temp_env / "output" / "Tidningen"
+    mapp.mkdir(parents=True)
+    (mapp / "en.pdf").write_bytes(b"x" * 2048)
+    (mapp / "tva.pdf").write_bytes(b"x" * 1024)
+    # Pågående nedladdning ska inte räknas in.
+    temp = mapp / "prenly-9-abc"
+    temp.mkdir()
+    (temp / "00001.pdf").write_bytes(b"x" * 999)
+
+    assert folder_usage(mapp) == (2, 3072)
+
+    svar = client.get("/")
+    assert "2 filer på disk" in svar.text
+    assert "3.0 kB" in svar.text

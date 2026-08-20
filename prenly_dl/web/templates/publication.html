@@ -27,11 +27,28 @@
 </div>
 
 <h2>Utgåvor</h2>
-<p class="muted">
-  {{ total_issues }} kända utgåvor{% if not publication.catalogue_complete %},
-  fler finns längre bak i katalogen{% endif %}.
-  {% if issues %}Visar {{ (page - 1) * page_size + 1 }}-{{ (page - 1) * page_size + issues|length }}.{% endif %}
-</p>
+<div class="issues-toolbar">
+  <p class="muted">
+    {{ total_issues }} kända utgåvor{% if publication.catalogue_complete %},
+    sida {{ page }} av {{ sista_sidan }}{% else %}, fler finns längre bak i katalogen{% endif %}.
+    {% if issues %}Visar {{ (page - 1) * page_size + 1 }}-{{ (page - 1) * page_size + issues|length }}.{% endif %}
+  </p>
+  {% if ar_lista %}
+    <label class="year-jump">
+      <span class="muted">Hoppa till år</span>
+      <select onchange="if (this.value) location.href = this.value">
+        <option value="">Välj år</option>
+        {% for ar in ar_lista %}
+          <option value="/publications/{{ publication.slug }}/year/{{ ar }}">{{ ar }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  {% elif not publication.catalogue_complete %}
+    <form method="post" action="/publications/{{ publication.id }}/catalogue">
+      <button class="secondary outline">Hämta hela katalogen</button>
+    </form>
+  {% endif %}
+</div>
 <div class="scroll-x">
 <table>
   <thead><tr><th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
@@ -83,7 +100,23 @@
   {% else %}
     <span></span>
   {% endif %}
-  <span class="muted">Sida {{ page }}</span>
+
+  {% if sidor %}
+    <span class="page-numbers">
+      {% for nummer in sidor %}
+        {% if nummer is none %}
+          <span class="page-gap">&hellip;</span>
+        {% elif nummer == page %}
+          <span class="page-current" aria-current="page">{{ nummer }}</span>
+        {% else %}
+          <a href="/publications/{{ publication.slug }}?page={{ nummer }}">{{ nummer }}</a>
+        {% endif %}
+      {% endfor %}
+    </span>
+  {% else %}
+    <span class="muted">Sida {{ page }}</span>
+  {% endif %}
+
   {% if har_fler %}
     <a href="/publications/{{ publication.slug }}?page={{ page + 1 }}" role="button" class="secondary outline">Äldre &rarr;</a>
   {% else %}
@@ -126,7 +159,7 @@
   <tbody>
   {% for job in jobs %}
     <tr>
-      <td>{{ job.created_at|local_time }}</td>
+      <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
       <td>{{ job.type }}</td>
       <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
       <td>{{ job.error or job.message or "-" }}</td>

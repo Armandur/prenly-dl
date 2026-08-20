@@ -10,9 +10,13 @@
       <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
       <td>{{ job.type }}</td>
       <td>
-        {% if job.issue_id and issues.get(job.issue_id) %}{{ issues[job.issue_id].name }}
-        {% elif job.publication_id and publications.get(job.publication_id) %}{{ publications[job.publication_id].name }}
-        {% else %}alla{% endif %}
+        {% set pub = publications.get(job.publication_id) %}
+        {% set issue = issues.get(job.issue_id) %}
+        {% if pub %}
+          <a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
+          {% if issue %}<br><span class="muted">{{ issue.name }}</span>{% endif %}
+        {% elif issue %}{{ issue.name }}
+        {% else %}alla publikationer{% endif %}
       </td>
       <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
       <td>

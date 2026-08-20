@@ -222,6 +222,26 @@ def run_poll_job(session: Session, job: Job) -> str:
     return summary
 
 
+def run_catalogue_job(session: Session, job: Job) -> str:
+    """Hämta hela katalogen för en publikation.
+
+    Katalogen är som mest ett hundratal poster, så det här är billigt -
+    men det är flera anrop i följd och hör därför hemma i kön.
+    """
+    publication = (
+        repo.get_publication(session, job.publication_id) if job.publication_id else None
+    )
+    if publication is None:
+        raise PrenlyError("Jobbet saknar publikation")
+
+    innan = repo.count_issues(session, publication.id)
+    # Ett tak som ligger långt över vad API:t levererar, så loopen alltid
+    # slutar på catalogue_complete och inte på taket.
+    nya = ensure_catalogue_depth(session, publication, behovs=100_000)
+    totalt = repo.count_issues(session, publication.id)
+    return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
+
+
 def run_download_job(session: Session, job: Job) -> str:
     """Ladda ner utgåvan som jobbet pekar på."""
     issue: Issue | None = repo.get_issue(session, job.issue_id) if job.issue_id else None
@@ -279,6 +299,8 @@ def execute_job(session: Session, job: Job) -> None:
     try:
         if job.type == JobType.POLL.value:
             summary = run_poll_job(session, job)
+        elif job.type == JobType.CATALOGUE.value:
+            summary = run_catalogue_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

@@ -124,7 +124,7 @@ def test_sidnummer_bortom_katalogen_backar_till_sista(client, publikation, monke
     _koppla(monkeypatch, _katalog(25))
     response = client.get("/publications/tidningen?page=9")
     assert "Visar 21-25" in response.text
-    assert "Sida 2" in response.text
+    assert "sida 2 av 2" in response.text
     # Ingen "Äldre"-knapp när katalogen är slut.
     assert "Äldre" not in response.text
 
@@ -140,3 +140,81 @@ def test_authfel_vid_bladdring_visar_besked_men_sidan_renderas(
     response = client.get("/publications/tidningen", follow_redirects=True)
     assert response.status_code == 200
     assert "Kunde inte hämta äldre utgåvor" in response.text
+
+
+def test_sidnummerfonstret_kapar_langa_listor():
+    from prenly_dl.web.routes import sidnummer
+
+    # Korta listor visas i sin helhet.
+    assert sidnummer(1, 4) == [1, 2, 3, 4]
+    assert sidnummer(1, 7) == [1, 2, 3, 4, 5, 6, 7]
+    # Långa: första, sista och ett fönster runt den aktuella, med hopp.
+    assert sidnummer(9, 45) == [1, None, 7, 8, 9, 10, 11, None, 45]
+    assert sidnummer(1, 20) == [1, 2, 3, None, 20]
+    assert sidnummer(45, 45) == [1, None, 43, 44, 45]
+    # Aldrig fler än en handfull länkar, oavsett hur stor katalogen blivit.
+    assert len(sidnummer(500, 1000)) <= 9
+
+
+def test_arshopp_landar_pa_ratt_sida(client, publikation, monkeypatch):
+    _koppla(monkeypatch, _katalog(76))
+    client.get("/publications/tidningen?page=4")  # hämta hela katalogen
+
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        ar = repo.issue_years(session, publikation)
+    assert ar, "årslistan ska inte vara tom"
+
+    svar = client.get(f"/publications/tidningen/year/{ar[-1]}", follow_redirects=False)
+    assert svar.status_code == 303
+    assert "page=" in svar.headers["location"]
+
+    # Årets första utgåva ska finnas på sidan man landar på.
+    sida = client.get(svar.headers["location"])
+    assert f"{ar[-1]}-" in sida.text
+
+
+def test_arshopp_och_sidnummer_doljs_tills_katalogen_ar_hel(
+    client, publikation, monkeypatch
+):
+    _koppla(monkeypatch, _katalog(200))
+    svar = client.get("/publications/tidningen")
+    # Halvhämtad katalog: inga sidnummer och inget årshopp, de skulle
+    # räknas ut från ofullständigt underlag.
+    assert "Hoppa till år" not in svar.text
+    assert "page-numbers" not in svar.text
+    assert "Hämta hela katalogen" in svar.text
+
+
+def test_kataloghamtning_koas_som_jobb(client, publikation, monkeypatch):
+    _koppla(monkeypatch, _katalog(200))
+    svar = client.post(
+        f"/publications/{publikation}/catalogue", follow_redirects=False
+    )
+    assert svar.status_code == 303
+
+    jobb = client.get("/api/jobs").json()
+    assert [j["type"] for j in jobb] == ["catalogue"]
+
+    # Ingen dubblett medan jobbet ligger i kön.
+    client.post(f"/publications/{publikation}/catalogue", follow_redirects=False)
+    assert len(client.get("/api/jobs").json()) == 1
+
+
+def test_kataloghamtningsjobbet_hamtar_allt(db, publikation, monkeypatch):
+    from prenly_dl.db.models import JobStatus
+
+    _koppla(monkeypatch, _katalog(76))
+    with db() as session:
+        repo.enqueue_catalogue(session, publikation)
+    with db() as session:
+        job = repo.claim_next_job(session)
+        services.execute_job(session, job)
+    with db() as session:
+        publication = repo.get_publication(session, publikation)
+        assert repo.count_issues(session, publikation) == 76
+        assert publication.catalogue_complete is True
+        job = repo.list_jobs(session)[0]
+        assert job.status == JobStatus.DONE.value
+        assert "76 utgåvor" in job.message

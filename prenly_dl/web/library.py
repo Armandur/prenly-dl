@@ -59,6 +59,30 @@ def group_by_folder(files: list[LibraryFile]) -> list[tuple[str, list[LibraryFil
     return sorted(grupper.items(), key=lambda kv: kv[0])
 
 
+def folder_usage(folder: Path) -> tuple[int, int]:
+    """Antal PDF:er och deras sammanlagda storlek i en katalog.
+
+    Pågående nedladdningar räknas inte: deras sidfiler ligger i en
+    tempkatalog och är inte färdiga utgåvor.
+    """
+    if not folder.is_dir():
+        return 0, 0
+    antal = 0
+    storlek = 0
+    for path in folder.rglob("*.pdf"):
+        if any(
+            part.startswith(TEMP_PREFIX)
+            for part in path.relative_to(folder).parts[:-1]
+        ):
+            continue
+        try:
+            storlek += path.stat().st_size
+        except OSError:
+            continue
+        antal += 1
+    return antal, storlek
+
+
 def resolve_file(rel_path: str, root: Path | None = None) -> Path | None:
     """Slå upp en fil i biblioteket, med skydd mot vägar ut ur katalogen."""
     base = (Path(root) if root else output_root()).resolve()

@@ -59,6 +59,7 @@ class JobStatus(str, Enum):
 class JobType(str, Enum):
     POLL = "poll"
     DOWNLOAD = "download"
+    CATALOGUE = "catalogue"
 
 
 class Publication(Base):

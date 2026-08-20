@@ -100,6 +100,25 @@ td.cover-cell { width: 3.5rem; padding-right: 0; }
 .filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
 .filter-bar input[type="search"] { flex: 1 1 15rem; margin: 0; }
 
+.issues-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+}
+.issues-toolbar p { margin: 0; }
+.issues-toolbar form { margin: 0; }
+.issues-toolbar button { margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem; }
+.year-jump { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.year-jump select { margin: 0; width: auto; padding: 0.35rem 2rem 0.35rem 0.7rem; font-size: 0.85rem; }
+
+.page-numbers { display: flex; align-items: center; gap: 0.15rem; flex-wrap: wrap; }
+.page-numbers a, .page-current, .page-gap {
+  min-width: 2rem; padding: 0.3rem 0.5rem; text-align: center;
+  border-radius: 4px; font-size: 0.85rem; text-decoration: none;
+}
+.page-numbers a:hover { background: var(--pico-code-background-color); }
+.page-current { background: var(--pico-primary); color: var(--pico-primary-inverse); font-weight: 600; }
+.page-gap { color: var(--pico-muted-color); min-width: 1rem; }
+
 .pagination {
   display: flex; align-items: center; justify-content: space-between;
   gap: 1rem; margin: 1rem 0 2rem;

@@ -206,6 +206,51 @@ def enqueue_poll(session: Session, publication_id: int | None = None) -> Job:
     return job
 
 
+def enqueue_catalogue(session: Session, publication_id: int) -> Job | None:
+    """Köa en full kataloghämtning om det inte redan finns en."""
+    pagaende = session.execute(
+        select(Job).where(
+            Job.type == JobType.CATALOGUE.value,
+            Job.publication_id == publication_id,
+            Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+        )
+    ).first()
+    if pagaende:
+        return None
+    job = Job(
+        type=JobType.CATALOGUE.value,
+        status=JobStatus.QUEUED.value,
+        publication_id=publication_id,
+    )
+    session.add(job)
+    session.flush()
+    return job
+
+
+def issue_years(session: Session, publication_id: int) -> list[str]:
+    """Åren som publikationens kända utgåvor spänner över, nyast först."""
+    rows = session.execute(
+        select(func.substr(Issue.publication_date, 1, 4))
+        .where(
+            Issue.publication_id == publication_id,
+            Issue.publication_date.is_not(None),
+        )
+        .distinct()
+    ).scalars()
+    return sorted((ar for ar in rows if ar), reverse=True)
+
+
+def issues_newer_than_year(session: Session, publication_id: int, ar: str) -> int:
+    """Antal utgåvor som ligger före årets första, i visningsordningen."""
+    return session.execute(
+        select(func.count(Issue.id)).where(
+            Issue.publication_id == publication_id,
+            Issue.publication_date.is_not(None),
+            Issue.publication_date >= f"{int(ar) + 1}-01-01",
+        )
+    ).scalar_one()
+
+
 def claim_next_job(session: Session) -> Job | None:
     """Ta nästa köade jobb och märk det som pågående."""
     job = session.execute(
