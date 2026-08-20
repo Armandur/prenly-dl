@@ -185,10 +185,40 @@ progress { margin: 0; width: 8rem; }
   fill: none; stroke: currentColor; stroke-width: 2;
 }
 .path-roots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-.path-roots button, #path-browser-up { width: auto; margin: 0; padding: 0.4rem 0.7rem; }
-.path-list { list-style: none; padding: 0; margin: 1rem 0; }
-.path-list li { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.4rem; }
-.path-list button { flex: 1; margin: 0; padding: 0.45rem 0.7rem; text-align: left; }
+.path-roots button { width: auto; margin: 0; padding: 0.4rem 0.7rem; }
+.path-breadcrumbs { overflow-x: auto; margin-bottom: 0.75rem; }
+.path-breadcrumbs ol {
+  display: flex; align-items: center; min-width: max-content;
+  margin: 0; padding: 0 0.1rem;
+}
+.path-breadcrumbs li { display: flex; align-items: center; padding: 0; }
+.path-breadcrumbs li:not(:last-child)::after {
+  content: "/"; padding: 0 0.45rem; color: var(--pico-muted-color);
+}
+.path-breadcrumbs button {
+  width: auto; margin: 0; padding: 0; border: 0; background: none;
+  color: var(--pico-primary); box-shadow: none; font: inherit;
+}
+.path-breadcrumbs [aria-current="location"] { font-weight: 600; }
+.path-list-count { margin: 0 0 0.35rem; text-align: right; }
+.path-list {
+  min-height: 8rem; max-height: 18rem; overflow-y: auto;
+  list-style: none; padding: 0; margin: 0 0 1rem;
+  border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius);
+}
+.path-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin: 0; padding: 0.55rem 0.75rem; cursor: default;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.path-list li:last-child { border-bottom: 0; }
+.path-list li[role="option"]:hover { background: var(--pico-code-background-color); }
+.path-list li[role="option"].selected {
+  background: var(--pico-primary-background); color: var(--pico-primary-inverse);
+}
+.path-list li[role="option"].selected small { color: inherit; }
+.path-name { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.path-name svg { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; fill: currentColor; }
 .path-writable { color: #2e9e5b; }
 .path-readonly { color: #c9403f; }
 
@@ -196,4 +226,3 @@ progress { margin: 0; width: 8rem; }
   .path-writable { color: #9fe0b8; }
   .path-readonly { color: #e09f9f; }
 }
-

@@ -18,9 +18,12 @@
       <button type="button" class="secondary outline" data-root="{{ root.id }}">{{ root.path }}</button>
       {% endfor %}
     </div>
-    <p><code id="path-browser-current"></code></p>
-    <button type="button" class="secondary outline" id="path-browser-up">En nivå upp</button>
-    <ul id="path-browser-list" class="path-list"></ul>
+    <nav class="path-breadcrumbs" aria-label="Aktuell sökväg">
+      <ol id="path-browser-breadcrumbs"></ol>
+    </nav>
+    <p id="path-browser-count" class="path-list-count muted"></p>
+    <ul id="path-browser-list" class="path-list" role="listbox"
+        aria-label="Kataloger" tabindex="0"></ul>
     <footer>
       <button type="button" class="secondary outline" id="path-browser-cancel">Avbryt</button>
       <button type="button" id="path-browser-select">Välj denna katalog</button>
@@ -31,19 +34,75 @@
   (() => {
     const dialog = document.getElementById("path-browser");
     const list = document.getElementById("path-browser-list");
-    const current = document.getElementById("path-browser-current");
-    const up = document.getElementById("path-browser-up");
+    const breadcrumbs = document.getElementById("path-browser-breadcrumbs");
+    const count = document.getElementById("path-browser-count");
     const select = document.getElementById("path-browser-select");
     let targetInput = null;
     let state = null;
+    let selectedIndex = -1;
 
-    async function load(root, path = "") {
+    function folderIcon() {
+      const namespace = "http://www.w3.org/2000/svg";
+      const icon = document.createElementNS(namespace, "svg");
+      const path = document.createElementNS(namespace, "path");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      path.setAttribute("d", "M3 6.5h7l2 2h9v10H3z");
+      icon.append(path);
+      return icon;
+    }
+
+    function renderBreadcrumbs() {
+      breadcrumbs.replaceChildren();
+      const parts = state.path ? state.path.split("/") : [];
+      const crumbs = [{ label: state.root_path, path: "" }];
+      parts.forEach((part, index) => {
+        crumbs.push({ label: part, path: parts.slice(0, index + 1).join("/") });
+      });
+      crumbs.forEach((crumb, index) => {
+        const item = document.createElement("li");
+        if (index === crumbs.length - 1) {
+          const label = document.createElement("span");
+          label.textContent = crumb.label;
+          label.setAttribute("aria-current", "location");
+          item.append(label);
+        } else {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = crumb.label;
+          button.addEventListener("click", () => load(state.root, crumb.path, true));
+          item.append(button);
+        }
+        breadcrumbs.append(item);
+      });
+    }
+
+    function mark(index) {
+      const rows = [...list.querySelectorAll("[role=option]")];
+      selectedIndex = rows.length ? Math.max(0, Math.min(index, rows.length - 1)) : -1;
+      rows.forEach((row, rowIndex) => {
+        const selected = rowIndex === selectedIndex;
+        row.classList.toggle("selected", selected);
+        row.setAttribute("aria-selected", String(selected));
+      });
+      if (selectedIndex >= 0) {
+        list.setAttribute("aria-activedescendant", rows[selectedIndex].id);
+        rows[selectedIndex].scrollIntoView({ block: "nearest" });
+      } else {
+        list.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    async function load(root, path = "", focusList = false) {
       const query = new URLSearchParams({ root, path });
       const response = await fetch(`/settings/directories?${query}`);
       if (!response.ok) throw new Error(dialog.dataset.error);
       state = await response.json();
-      current.textContent = state.absolute_path;
-      up.disabled = state.parent === null;
+      selectedIndex = -1;
+      list.removeAttribute("aria-activedescendant");
+      renderBreadcrumbs();
+      const directoryCount = state.directories.length;
+      count.textContent = `${directoryCount} ${directoryCount === 1 ? "katalog" : "kataloger"}`;
       select.disabled = !state.writable;
       select.title = state.writable ? "" : dialog.dataset.readonly;
       list.replaceChildren();
@@ -53,20 +112,41 @@
         empty.textContent = dialog.dataset.empty;
         list.append(empty);
       }
-      for (const directory of state.directories) {
+      state.directories.forEach((directory, index) => {
         const item = document.createElement("li");
-        const button = document.createElement("button");
+        const name = document.createElement("span");
         const status = document.createElement("small");
-        button.type = "button";
-        button.className = "secondary outline";
-        button.textContent = directory.name;
-        button.addEventListener("click", () => load(state.root, directory.path));
+        item.id = `path-option-${index}`;
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", "false");
+        name.className = "path-name";
+        name.append(folderIcon(), document.createTextNode(directory.name));
         status.textContent = directory.writable ? dialog.dataset.writable : dialog.dataset.readonly;
         status.className = directory.writable ? "path-writable" : "path-readonly";
-        item.append(button, status);
+        item.addEventListener("click", () => {
+          mark(index);
+          list.focus();
+        });
+        item.addEventListener("dblclick", () => load(state.root, directory.path, true));
+        item.append(name, status);
         list.append(item);
-      }
+      });
+      if (focusList) list.focus();
     }
+
+    list.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        mark(selectedIndex < 0 ? (step > 0 ? 0 : state.directories.length - 1) : selectedIndex + step);
+      } else if (event.key === "Enter" && selectedIndex >= 0) {
+        event.preventDefault();
+        load(state.root, state.directories[selectedIndex].path, true);
+      } else if (event.key === "Backspace" && state.parent !== null) {
+        event.preventDefault();
+        load(state.root, state.parent, true);
+      }
+    });
 
     document.querySelectorAll(".path-browser-open").forEach((button) => {
       button.addEventListener("click", async () => {
@@ -74,16 +154,15 @@
         dialog.showModal();
         try {
           const root = document.querySelector("[data-root]").dataset.root;
-          await load(root);
+          await load(root, "", true);
         } catch (error) {
           list.textContent = error.message;
         }
       });
     });
     document.querySelectorAll("[data-root]").forEach((button) => {
-      button.addEventListener("click", () => load(button.dataset.root));
+      button.addEventListener("click", () => load(button.dataset.root, "", true));
     });
-    up.addEventListener("click", () => load(state.root, state.parent));
     select.addEventListener("click", () => {
       if (targetInput && state && state.writable) targetInput.value = state.absolute_path;
       dialog.close();
