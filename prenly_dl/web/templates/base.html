@@ -115,7 +115,9 @@
             knapp.style.minWidth = "";
           } else {
             knapp.dataset.klar = data.url;
-            knapp.textContent = "Öppna";
+            knapp.textContent = "Öppna förhandsgranskning";
+            // Den texten är bredare än den låsta bredden.
+            knapp.style.minWidth = "";
           }
         } catch (fel) {
           knapp.removeAttribute("aria-busy");
