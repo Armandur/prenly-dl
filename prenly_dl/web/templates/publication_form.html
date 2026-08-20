@@ -5,17 +5,21 @@
 <h1>Lägg till publikation</h1>
 
 <article>
-  <h2>Klistra in konfiguration</h2>
+  <h2>Klistra in från konsolsnutten</h2>
   <p class="muted">
-    <a href="/uppgifter">Kör konsolsnutten</a> på tidningens läsarsida och klistra in
-    JSON:en här. Kommentarer med <code>#</code> är tillåtna.
+    Ett block eller hela konsolutskriften - båda funkar, och flera
+    publikationer kan läggas till på en gång.
   </p>
-  <form method="post" action="/publications">
-    <textarea name="conf_json" rows="10" placeholder='{ "credentials": { ... }, "publication": { "title": 4019, "limit": 1 } }'></textarea>
-    <button type="submit">Lägg till från JSON</button>
-  </form>
+  <a href="/uppgifter#klistra" role="button" class="secondary">Till inklistringsytan</a>
+</article>
+
+<article>
+  <h2>Se vad uppgifterna ger tillgång till</h2>
+  <p class="muted">
+    Har du redan uppgifterna kan du lista publikationerna direkt här.
+  </p>
   <form method="post" action="/publications/discover">
-    <textarea name="conf_json" rows="6" placeholder="Klistra in samma JSON här för att först se vilka publikationer uppgifterna ger tillgång till"></textarea>
+    <textarea name="conf_json" rows="6" placeholder="Klistra in en konfiguration för att se vilka publikationer den ger tillgång till"></textarea>
     <button class="secondary" type="submit">Visa tillgängliga publikationer</button>
   </form>
 </article>

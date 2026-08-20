@@ -147,3 +147,145 @@ def test_uppgiftssidan_visar_konsolsnutten(client):
     assert "PrenlyData" in response.text
     assert "prenlyreadersessiontoken" in response.text
     assert "prenlyKonfig" in response.text
+
+
+KONSOLUTSKRIFT = """
+prenly-dl 13 publikationer på https://etidning.dn.se, 2 läsbara med det här kontot.
+
+--- Kundtidning DN (titel 3121) ---
+{
+  "credentials": {"site": "https://etidning.dn.se", "cdn": "", "textalk-auth": "abc", "auth": "def"},
+  "publication": {"title": 3121, "limit": 1},
+  "prefix": "Kundtidning DN - ",
+  "folder": "Kundtidning DN"
+}
+
+--- Bilagan (titel 3181) ---
+{
+  "credentials": {"site": "https://etidning.dn.se", "cdn": "", "textalk-auth": "abc", "auth": "def"},
+  "publication": {"title": 3181, "limit": 1},
+  "prefix": "Bilagan - ",
+  "folder": "Bilagan"
+}
+Kör prenlyKonfig() för att kopiera den första.
+"""
+
+
+def test_granskning_hittar_alla_konfigurationer_i_utskriften(client):
+    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    assert svar.status_code == 200
+    assert "Hittade 2 publikationer" in svar.text
+    assert "Kundtidning DN" in svar.text
+    assert "Bilagan" in svar.text
+    # Rubrikerna och statusraden i utskriften ska inte bli publikationer.
+    assert svar.text.count('name="valda"') == 2
+
+
+def test_granskning_markerar_befintliga(client):
+    client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    client.post("/publications", data={"conf_json": KONSOLUTSKRIFT.split("---")[2]
+                                       .split("Bilagan")[0].strip()})
+    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    assert "Finns redan" in svar.text
+    assert "Ny" in svar.text
+
+
+def test_text_utan_konfiguration_ger_besked(client):
+    svar = client.post(
+        "/uppgifter/granska", data={"klistrat": "bara brus"}, follow_redirects=True
+    )
+    assert "Hittade ingen konfiguration" in svar.text
+
+
+def test_sparar_bara_de_valda(client):
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    import re
+
+    varden = re.findall(r'name="valda" value="([^"]+)"', granskning.text)
+    assert len(varden) == 2
+
+    import html as htmlmod
+
+    svar = client.post(
+        "/uppgifter/spara",
+        data={"valda": htmlmod.unescape(varden[0])},
+        follow_redirects=True,
+    )
+    assert "1 tillagda" in svar.text
+
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        assert len(repo_module.list_publications(session)) == 1
+
+
+def test_sparar_utan_val_ger_besked(client):
+    svar = client.post("/uppgifter/spara", data={}, follow_redirects=True)
+    assert "Inga publikationer valda" in svar.text
+
+
+def test_omsparning_uppdaterar_uppgifterna(client):
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    import html as htmlmod
+    import re
+
+    varden = [htmlmod.unescape(v) for v in
+              re.findall(r'name="valda" value="([^"]+)"', granskning.text)]
+    client.post("/uppgifter/spara", data={"valda": varden}, follow_redirects=True)
+
+    ny_token = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "helt-ny-token"')
+    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny_token})
+    varden2 = [htmlmod.unescape(v) for v in
+               re.findall(r'name="valda" value="([^"]+)"', granskning2.text)]
+    svar = client.post("/uppgifter/spara", data={"valda": varden2}, follow_redirects=True)
+    assert "2 uppdaterade med nya uppgifter" in svar.text
+
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        for publication in repo_module.list_publications(session):
+            assert publication.auth == "helt-ny-token"
+
+
+ETT_BLOCK = """{
+  "credentials": {"site": "https://etidning.dn.se", "cdn": "", "textalk-auth": "ny", "auth": "ny"},
+  "publication": {"title": 3121, "limit": 1},
+  "prefix": "Kundtidning DN - ",
+  "folder": "Kundtidning DN"
+}"""
+
+
+def test_ett_enskilt_block_fungerar(client):
+    svar = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    assert "Hittade 1 publikation" in svar.text
+    assert svar.text.count('name="valda"') == 1
+
+
+def test_ett_block_fornyar_befintliga_uppgifter(client):
+    import html as htmlmod
+    import re
+
+    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    varden = [htmlmod.unescape(v) for v in
+              re.findall(r'name="valda" value="([^"]+)"', granskning.text)]
+    client.post("/uppgifter/spara", data={"valda": varden}, follow_redirects=True)
+
+    # Bara ett block: den publikationen ska kännas igen och uppdateras.
+    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    assert "Finns redan" in granskning2.text
+    varden2 = [htmlmod.unescape(v) for v in
+               re.findall(r'name="valda" value="([^"]+)"', granskning2.text)]
+    svar = client.post("/uppgifter/spara", data={"valda": varden2}, follow_redirects=True)
+    assert "1 uppdaterade med nya uppgifter" in svar.text
+
+    from prenly_dl.db import repository as repo_module
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        publikationer = {p.title_id: p for p in repo_module.list_publications(session)}
+        # Bara den i blocket ska ha rörts.
+        assert publikationer[3121].auth == "ny"
+        assert publikationer[3181].auth == "def"
+        assert len(publikationer) == 2

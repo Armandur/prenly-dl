@@ -49,6 +49,69 @@ def strip_json_comments(text: str) -> str:
     return "".join(out)
 
 
+def extract_configs(text: str) -> list[dict]:
+    """Plocka ut alla konfigurationer ur en klistrad text.
+
+    Konsolsnutten skriver ett JSON-block per läsbar publikation, med
+    rubriker emellan. Den som kopierar hela utskriften får alltså med brus,
+    så texten skannas efter balanserade objekt i stället för att tolkas som
+    ett enda dokument.
+    """
+    rensad = strip_json_comments(text)
+    funna: list[dict] = []
+    djup = 0
+    start = None
+    in_string = False
+    escaped = False
+
+    for index, char in enumerate(rensad):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if djup == 0:
+                start = index
+            djup += 1
+        elif char == "}":
+            if djup == 0:
+                continue
+            djup -= 1
+            if djup == 0 and start is not None:
+                bit = rensad[start:index + 1]
+                try:
+                    kandidat = json.loads(bit)
+                except ValueError:
+                    start = None
+                    continue
+                # Bara objekt som faktiskt är konfigurationer räknas -
+                # utskriften innehåller även andra objekt.
+                if (
+                    isinstance(kandidat, dict)
+                    and isinstance(kandidat.get("credentials"), dict)
+                    and isinstance(kandidat.get("publication"), dict)
+                    and kandidat["publication"].get("title") is not None
+                ):
+                    funna.append(kandidat)
+                start = None
+
+    # Samma publikation kan förekomma flera gånger i en klistrad text.
+    unika: dict[tuple, dict] = {}
+    for conf in funna:
+        nyckel = (
+            str(conf["credentials"].get("site", "")).rstrip("/"),
+            str(conf["publication"]["title"]),
+        )
+        unika[nyckel] = conf
+    return list(unika.values())
+
+
 def load_conf(path: Path) -> dict:
     text = Path(path).read_text(encoding="utf-8")
     return json.loads(strip_json_comments(text))

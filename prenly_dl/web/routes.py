@@ -16,7 +16,12 @@ from ..db import repository as repo
 from ..db.models import AuthStatus, Publication
 from ..db.session import get_session
 from ..errors import PrenlyError
-from ..importer import import_conf, import_directory, strip_json_comments
+from ..importer import (
+    extract_configs,
+    import_conf,
+    import_directory,
+    strip_json_comments,
+)
 from ..scheduler import (
     DEFAULT_JOB_HISTORY_DAYS,
     DEFAULT_POLL_CRON,
@@ -161,13 +166,91 @@ def new_publication_form(request: Request):
     return render(request, "publication_form.html", publication=None, titles=None)
 
 
-@router.get("/uppgifter", response_class=HTMLResponse)
-def credentials_help(request: Request):
-    """Konsolsnutten som plockar ut uppgifterna ur en Prenly-läsare."""
-    snutt = (Path(__file__).parent / "static" / "konsolsnutt.js").read_text(
+def _konsolsnutt() -> str:
+    return (Path(__file__).parent / "static" / "konsolsnutt.js").read_text(
         encoding="utf-8"
     )
-    return render(request, "credentials.html", snutt=snutt)
+
+
+@router.get("/uppgifter", response_class=HTMLResponse)
+def credentials_help(request: Request):
+    """Konsolsnutten och ytan att klistra in resultatet på."""
+    return render(request, "credentials.html", snutt=_konsolsnutt(), fynd=None)
+
+
+@router.post("/uppgifter/granska", response_class=HTMLResponse)
+def review_pasted(request: Request, klistrat: str = Form("")):
+    """Visa vad som hittades i den klistrade texten innan något sparas."""
+    if not klistrat.strip():
+        flash(request, "Klistra in det du fick från konsolsnutten först", "error")
+        return back("/uppgifter")
+
+    konfigurationer = extract_configs(klistrat)
+    if not konfigurationer:
+        flash(
+            request,
+            "Hittade ingen konfiguration i texten. Kopiera hela utskriften från "
+            "konsolen, eller ett helt JSON-block.",
+            "error",
+        )
+        return back("/uppgifter")
+
+    fynd = []
+    with get_session() as session:
+        for conf in konfigurationer:
+            site = str(conf["credentials"].get("site", "")).rstrip("/")
+            title_id = int(conf["publication"]["title"])
+            befintlig = repo.find_publication(session, site, title_id)
+            fynd.append({
+                "conf": json.dumps(conf, ensure_ascii=False),
+                "namn": conf.get("folder") or conf.get("prefix", "").strip(" -")
+                        or f"Publikation {title_id}",
+                "title_id": title_id,
+                "site": site,
+                "befintlig": befintlig.name if befintlig else None,
+                "slug": befintlig.slug if befintlig else None,
+            })
+    return render(request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd)
+
+
+@router.post("/uppgifter/spara")
+async def save_pasted(request: Request):
+    """Spara de publikationer användaren kryssat i."""
+    form = await request.form()
+    valda = form.getlist("valda")
+    if not valda:
+        flash(request, "Inga publikationer valda", "error")
+        return back("/uppgifter")
+
+    nya, uppdaterade, trasiga = 0, 0, 0
+    with get_session() as session:
+        for rad in valda:
+            try:
+                conf = json.loads(rad)
+            except ValueError:
+                trasiga += 1
+                continue
+            site = str(conf.get("credentials", {}).get("site", "")).rstrip("/")
+            fanns = repo.find_publication(session, site, int(conf["publication"]["title"]))
+            try:
+                import_conf(session, conf)
+            except (KeyError, ValueError):
+                trasiga += 1
+                continue
+            if fanns:
+                uppdaterade += 1
+            else:
+                nya += 1
+
+    delar = []
+    if nya:
+        delar.append(f"{nya} tillagda")
+    if uppdaterade:
+        delar.append(f"{uppdaterade} uppdaterade med nya uppgifter")
+    if trasiga:
+        delar.append(f"{trasiga} kunde inte tolkas")
+    flash(request, ", ".join(delar).capitalize(), "error" if trasiga else "success")
+    return back("/")
 
 
 def _credentials_from_form(site: str, textalk_auth: str, auth: str, cdn: str):

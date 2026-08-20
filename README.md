@@ -85,8 +85,11 @@ kontot faktiskt kan läsa vid "Ingen prenumeration":
 1. Logga in på tidningens läsarsida i webbläsaren.
 2. Öppna `/uppgifter` i prenly-dl, kopiera konsolsnutten och kör den i
    webbläsarens konsol (F12 → Console) på läsarsidan.
-3. Klistra in JSON-blocket under "Lägg till publikation", eller klistra in
-   de enskilda värdena på publikationens sida och tryck "Testa uppgifter".
+3. Klistra in resultatet i inklistringsytan på samma sida. Ett enskilt
+   JSON-block eller hela konsolutskriften fungerar lika bra - alla
+   konfigurationer i texten plockas ut, du väljer vilka som ska sparas, och
+   publikationer du redan har känns igen på sajt och titel-ID och får de nya
+   uppgifterna i stället för att läggas till på nytt.
 
 Snutten läser klientnyckeln ur sidans egen `PrenlyData`-konfiguration och
 sessionstoken ur `localStorage`, och frågar sedan Prenly vilka publikationer
