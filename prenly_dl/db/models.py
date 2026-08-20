@@ -80,6 +80,11 @@ class Publication(Base):
     watch_limit: Mapped[int] = mapped_column(Integer, default=1)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Hur många katalogposter som hämtats, och om katalogen tagit slut.
+    # Äldre utgåvor ändras inte, så en hämtad sida behöver aldrig hämtas om.
+    catalogue_offset: Mapped[int] = mapped_column(Integer, default=0)
+    catalogue_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+
     auth_status: Mapped[str] = mapped_column(String(32), default=AuthStatus.UNKNOWN.value)
     auth_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

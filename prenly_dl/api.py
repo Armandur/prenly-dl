@@ -133,8 +133,12 @@ def get_catalogue_issues(
     context_token: str,
     title_id: int,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict]:
-    """De `limit` senaste utgåvorna för en publikation.
+    """Utgåvor för en publikation, nyast först.
+
+    `offset` bläddrar bakåt i katalogen. Ett svar med färre poster än
+    `limit` betyder att katalogen är slut.
 
     Returnerar råa katalogposter (uid, name, publication_date, media).
     """
@@ -142,6 +146,8 @@ def get_catalogue_issues(
         f"{CATALOGUE_BASE}/api/web-reader/v1/issues"
         f"?title_ids[]={title_id}&limit={limit}&context_token={context_token}"
     )
+    if offset:
+        url += f"&offset={offset}"
     data = _get_json(session, url, _origin_headers(creds))
     return data if isinstance(data, list) else []
 

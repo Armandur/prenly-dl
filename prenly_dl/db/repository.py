@@ -102,12 +102,21 @@ def set_auth_status(
 
 
 def list_issues(
-    session: Session, publication_id: int | None = None, limit: int = 100
+    session: Session,
+    publication_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[Issue]:
     stmt = select(Issue).order_by(Issue.publication_date.desc(), Issue.id.desc())
     if publication_id is not None:
         stmt = stmt.where(Issue.publication_id == publication_id)
-    return list(session.execute(stmt.limit(limit)).scalars())
+    return list(session.execute(stmt.limit(limit).offset(offset)).scalars())
+
+
+def count_issues(session: Session, publication_id: int) -> int:
+    return session.execute(
+        select(func.count(Issue.id)).where(Issue.publication_id == publication_id)
+    ).scalar_one()
 
 
 def get_issue(session: Session, issue_id: int) -> Issue | None:

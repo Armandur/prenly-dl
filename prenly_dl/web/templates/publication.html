@@ -27,6 +27,11 @@
 </div>
 
 <h2>Utgåvor</h2>
+<p class="muted">
+  {{ total_issues }} kända utgåvor{% if not publication.catalogue_complete %},
+  fler finns längre bak i katalogen{% endif %}.
+  {% if issues %}Visar {{ (page - 1) * page_size + 1 }}-{{ (page - 1) * page_size + issues|length }}.{% endif %}
+</p>
 <div class="scroll-x">
 <table>
   <thead><tr><th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
@@ -70,6 +75,22 @@
   </tbody>
 </table>
 </div>
+
+{% if page > 1 or har_fler %}
+<nav class="pagination">
+  {% if page > 1 %}
+    <a href="/publications/{{ publication.slug }}?page={{ page - 1 }}" role="button" class="secondary outline">&larr; Nyare</a>
+  {% else %}
+    <span></span>
+  {% endif %}
+  <span class="muted">Sida {{ page }}</span>
+  {% if har_fler %}
+    <a href="/publications/{{ publication.slug }}?page={{ page + 1 }}" role="button" class="secondary outline">Äldre &rarr;</a>
+  {% else %}
+    <span></span>
+  {% endif %}
+</nav>
+{% endif %}
 
 <h2>Inställningar</h2>
 <form method="post" action="/publications/{{ publication.id }}/edit">

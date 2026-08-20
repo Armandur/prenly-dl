@@ -104,23 +104,88 @@ def poll_publication(
     new_issues = 0
     queued = 0
     for entry in entries:
-        issue, created = repo.upsert_issue(session, publication, entry)
-        if created:
-            new_issues += 1
         # Omslaget hämtas oavsett om PDF:en går att ladda ner, så kortet
         # kan visa titelsidan även för en publikation utan prenumeration.
-        if issue.cover_checksum:
-            fetch_and_cache_cover(http, creds, publication.title_id, issue.cover_checksum)
+        issue, created = _spara_katalogpost(session, publication, http, creds, entry)
+        if created:
+            new_issues += 1
         if enqueue and issue.status in (IssueStatus.NEW.value, IssueStatus.ERROR.value):
             if repo.enqueue_download(session, issue):
                 queued += 1
 
+    publication.catalogue_offset = max(publication.catalogue_offset + new_issues, len(entries))
+    session.add(publication)
     _status_fran_titlar(session, publication, titles)
     logger.info(
         "%s: %d utgåvor i katalogen, %d nya, %d köade",
         publication.name, len(entries), new_issues, queued,
     )
     return {"found": len(entries), "new": new_issues, "queued": queued}
+
+
+# Hur många katalogposter som hämtas i taget när användaren bläddrar bakåt.
+CATALOGUE_CHUNK = 20
+
+
+def _spara_katalogpost(
+    session: Session, publication: Publication, http, creds, entry: dict,
+    hamta_omslag: bool = True,
+):
+    issue, created = repo.upsert_issue(session, publication, entry)
+    if hamta_omslag and issue.cover_checksum:
+        fetch_and_cache_cover(http, creds, publication.title_id, issue.cover_checksum)
+    return issue, created
+
+
+def ensure_catalogue_depth(
+    session: Session, publication: Publication, behovs: int
+) -> int:
+    """Se till att minst `behovs` utgåvor är kända, genom att bläddra bakåt.
+
+    Utgåvor som redan hämtats läses ur databasen: en äldre utgåva ändras
+    inte, så den behöver aldrig hämtas om. Returnerar antalet nya utgåvor.
+    """
+    if publication.catalogue_complete:
+        return 0
+    if repo.count_issues(session, publication.id) >= behovs:
+        return 0
+
+    http = build_session()
+    creds = repo.credentials_for(publication)
+    token = get_context_token(http, creds)
+
+    nya = 0
+    # Varje varv flyttar catalogue_offset framåt, så loopen kan inte fastna.
+    while (
+        not publication.catalogue_complete
+        and repo.count_issues(session, publication.id) < behovs
+    ):
+        entries = get_catalogue_issues(
+            http, creds, token, publication.title_id,
+            limit=CATALOGUE_CHUNK, offset=publication.catalogue_offset,
+        )
+        if not entries:
+            publication.catalogue_complete = True
+            break
+        for entry in entries:
+            # Omslagen hämtas inte här: 20 bilder i följd skulle göra
+            # sidladdningen halvminuten lång. /covers-rutten hämtar dem
+            # lat och parallellt när webbläsaren efterfrågar dem.
+            _, created = _spara_katalogpost(
+                session, publication, http, creds, entry, hamta_omslag=False
+            )
+            if created:
+                nya += 1
+        publication.catalogue_offset += len(entries)
+        if len(entries) < CATALOGUE_CHUNK:
+            publication.catalogue_complete = True
+        session.add(publication)
+        session.commit()
+
+    if nya:
+        logger.info("%s: hämtade %d äldre utgåvor ur katalogen", publication.name, nya)
+    session.add(publication)
+    return nya
 
 
 def run_poll_job(session: Session, job: Job) -> str:

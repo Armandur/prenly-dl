@@ -100,6 +100,12 @@ td.cover-cell { width: 3.5rem; padding-right: 0; }
 .filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
 .filter-bar input[type="search"] { flex: 1 1 15rem; margin: 0; }
 
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin: 1rem 0 2rem;
+}
+.pagination [role="button"] { margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem; }
+
 pre.job-error { white-space: pre-wrap; word-break: break-word; margin: 0.5rem 0 0; }
 
 table { font-size: 0.9rem; }

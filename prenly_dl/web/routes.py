@@ -25,13 +25,21 @@ from ..scheduler import (
     next_poll_time,
     reschedule_poll,
 )
-from ..services import discover_titles, poll_publication, verify_credentials
+from ..services import (
+    discover_titles,
+    ensure_catalogue_depth,
+    poll_publication,
+    verify_credentials,
+)
 from .auth import check_password, is_authenticated
 from .rendering import STATUS_LABELS, back, flash, render
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Antal utgåvor per sida i utgåvetabellen.
+PAGE_SIZE = 20
 
 
 # --------------------------------------------------------------------------
@@ -222,14 +230,31 @@ def create_publication(
 
 
 @router.get("/publications/{slug}", response_class=HTMLResponse)
-def publication_detail(request: Request, slug: str):
+def publication_detail(request: Request, slug: str, page: int = 1):
+    page = max(1, page)
     with get_session() as session:
         publication = repo.get_publication_by_slug(session, slug)
         if publication is None:
             flash(request, "Publikationen finns inte", "error")
             return back("/")
-        issues = repo.list_issues(session, publication.id, limit=100)
-        latest = issues[0] if issues else None
+
+        # Bläddring bakåt fyller på ur katalogen. Redan hämtade utgåvor
+        # läses ur databasen och kostar inga anrop.
+        try:
+            ensure_catalogue_depth(session, publication, page * PAGE_SIZE)
+        except PrenlyError as error:
+            flash(request, f"Kunde inte hämta äldre utgåvor: {error}", "error")
+
+        total = repo.count_issues(session, publication.id)
+        # Katalogen kan ta slut mitt i en begärd sida - backa till den sista
+        # som faktiskt har utgåvor i stället för att visa en tom tabell.
+        sista_sidan = max(1, -(-total // PAGE_SIZE))
+        page = min(page, sista_sidan)
+        issues = repo.list_issues(
+            session, publication.id, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE
+        )
+        latest = repo.latest_issue(session, publication.id)
+        har_fler = total > page * PAGE_SIZE or not publication.catalogue_complete
         jobs = [j for j in repo.list_jobs(session, limit=200)
                 if j.publication_id == publication.id][:20]
     return render(
@@ -239,6 +264,10 @@ def publication_detail(request: Request, slug: str):
         issues=issues,
         latest=latest,
         jobs=jobs,
+        page=page,
+        page_size=PAGE_SIZE,
+        total_issues=total,
+        har_fler=har_fler,
     )
 
 
