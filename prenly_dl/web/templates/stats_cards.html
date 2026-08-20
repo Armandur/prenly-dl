@@ -1,0 +1,24 @@
+<div class="stats" id="stats-cards" hx-get="/stats/cards" hx-trigger="every 10s" hx-swap="outerHTML">
+  <article class="stat-card">
+    <span class="stat-label">Publikationer</span>
+    <span class="stat-value">{{ stats.publikationer }}</span>
+    <span class="stat-sub">{{ stats.aktiva }} aktiva</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Utgåvor</span>
+    <span class="stat-value">{{ stats.utgavor }}</span>
+    <span class="stat-sub">{{ stats.hamtade }} hämtade</span>
+  </article>
+  <article class="stat-card">
+    <a href="/jobs?status=queued"><span class="stat-label">I kö</span>
+    <span class="stat-value">{{ stats.koade }}</span></a>
+    <span class="stat-sub">
+      {% if stats.kor %}<a href="/jobs?status=running">{{ stats.kor }} kör</a>{% else %}vilar{% endif %}
+    </span>
+  </article>
+  <article class="stat-card">
+    <a href="/jobs?status=error"><span class="stat-label">Fel</span>
+    <span class="stat-value {% if stats.fel %}stat-bad{% endif %}">{{ stats.fel }}</span></a>
+    <span class="stat-sub">i jobbhistoriken</span>
+  </article>
+</div>

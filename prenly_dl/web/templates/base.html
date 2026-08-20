@@ -6,6 +6,7 @@
   <title>{% block title %}prenly-dl{% endblock %}</title>
   <link rel="stylesheet" href="/static/pico.min.css">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
   <header class="container">
@@ -13,6 +14,7 @@
       <ul><li><strong><a href="/">prenly-dl</a></strong></li></ul>
       <ul>
         <li><a href="/">Översikt</a></li>
+        <li><a href="/library">Bibliotek</a></li>
         <li><a href="/jobs">Jobb</a></li>
         <li><a href="/settings">Inställningar</a></li>
         {% if auth_enabled %}
@@ -28,5 +30,45 @@
     {% block content %}{% endblock %}
   </main>
   {% block scripts %}{% endblock %}
+
+  {# Egen bekräftelseruta i stället för webbläsarens confirm(), som inte går
+     att formge och prefixar texten med adressen. #}
+  <dialog id="confirm-dialog">
+    <article>
+      <p id="confirm-text"></p>
+      <footer class="card-actions">
+        <button class="secondary outline" id="confirm-no">Avbryt</button>
+        <button id="confirm-yes" autofocus>Bekräfta</button>
+      </footer>
+    </article>
+  </dialog>
+  <script>
+    (function () {
+      const dialog = document.getElementById("confirm-dialog");
+      const text = document.getElementById("confirm-text");
+      let vantande = null;
+
+      function avgor(ok) {
+        const form = vantande;
+        vantande = null;
+        if (dialog.open) dialog.close();
+        if (ok && form) form.submit();
+      }
+      document.getElementById("confirm-yes").addEventListener("click", () => avgor(true));
+      document.getElementById("confirm-no").addEventListener("click", () => avgor(false));
+      dialog.addEventListener("cancel", (e) => { e.preventDefault(); avgor(false); });
+      dialog.addEventListener("click", (e) => { if (e.target === dialog) avgor(false); });
+
+      document.querySelectorAll("form[data-confirm]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          if (vantande === form) return;
+          event.preventDefault();
+          text.textContent = form.dataset.confirm;
+          vantande = form;
+          dialog.showModal();
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -253,6 +253,53 @@ def list_jobs(session: Session, limit: int = 50, active_only: bool = False) -> l
     return list(session.execute(stmt.limit(limit)).scalars())
 
 
+def job_counts(session: Session) -> dict[str, int]:
+    """Antal jobb per status, för filterknapparna på jobbsidan."""
+    rows = session.execute(
+        select(Job.status, func.count(Job.id)).group_by(Job.status)
+    ).all()
+    counts = {status.value: 0 for status in JobStatus}
+    for status, antal in rows:
+        counts[status] = antal
+    counts["alla"] = sum(antal for _, antal in rows)
+    return counts
+
+
+def dashboard_stats(session: Session) -> dict[str, int]:
+    """Siffrorna överst på översikten."""
+    publikationer = session.execute(select(func.count(Publication.id))).scalar_one()
+    aktiva = session.execute(
+        select(func.count(Publication.id)).where(Publication.enabled.is_(True))
+    ).scalar_one()
+    utgavor = session.execute(select(func.count(Issue.id))).scalar_one()
+    hamtade = session.execute(
+        select(func.count(Issue.id)).where(Issue.status == IssueStatus.DONE.value)
+    ).scalar_one()
+    counts = job_counts(session)
+    return {
+        "publikationer": publikationer,
+        "aktiva": aktiva,
+        "utgavor": utgavor,
+        "hamtade": hamtade,
+        "koade": counts.get(JobStatus.QUEUED.value, 0),
+        "kor": counts.get(JobStatus.RUNNING.value, 0),
+        "fel": counts.get(JobStatus.ERROR.value, 0),
+    }
+
+
+def get_job(session: Session, job_id: int) -> Job | None:
+    return session.get(Job, job_id)
+
+
+def list_jobs_filtered(
+    session: Session, status: str | None = None, limit: int = 100
+) -> list[Job]:
+    stmt = select(Job).order_by(Job.created_at.desc(), Job.id.desc())
+    if status and status != "alla":
+        stmt = stmt.where(Job.status == status)
+    return list(session.execute(stmt.limit(limit)).scalars())
+
+
 def reset_stale_running_jobs(session: Session) -> int:
     """Jobb som satt som pågående när processen dog ska inte hänga kvar."""
     stale = list(

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Jobb {{ job.id }} - prenly-dl{% endblock %}
+{% block content %}
+<a href="/jobs" class="back-link">&larr; Alla jobb</a>
+<hgroup>
+  <h1>Jobb {{ job.id }}</h1>
+  <p>
+    <span class="badge {{ job.status|status_class }}">{{ job.status }}</span>
+    {{ job.type }}
+  </p>
+</hgroup>
+
+<article>
+  <table>
+    <tbody>
+      <tr><th>Skapat</th><td>{{ job.created_at|local_time("%Y-%m-%d %H:%M:%S") }}</td></tr>
+      <tr><th>Startat</th><td>{{ job.started_at|local_time("%Y-%m-%d %H:%M:%S") }}</td></tr>
+      <tr><th>Avslutat</th><td>{{ job.finished_at|local_time("%Y-%m-%d %H:%M:%S") }}</td></tr>
+      <tr><th>Publikation</th>
+        <td>{% if publication %}<a href="/publications/{{ publication.slug }}">{{ publication.name }}</a>{% else %}alla{% endif %}</td></tr>
+      <tr><th>Utgåva</th><td>{{ issue.name if issue else "-" }}</td></tr>
+      <tr><th>Tvingad</th><td>{{ "ja" if job.force else "nej" }}</td></tr>
+      <tr><th>Förlopp</th>
+        <td>{% if job.progress_total %}{{ job.progress_done }}/{{ job.progress_total }} sidor{% else %}-{% endif %}</td></tr>
+      <tr><th>Resultat</th><td>{{ job.message or "-" }}</td></tr>
+    </tbody>
+  </table>
+</article>
+
+{% if job.error %}
+<article class="flash flash-error">
+  <strong>Fel</strong>
+  <pre class="job-error">{{ job.error }}</pre>
+</article>
+{% endif %}
+
+{% if issue and issue.file_path %}
+<p class="muted">Fil: <code>{{ issue.file_path }}</code></p>
+{% endif %}
+{% endblock %}

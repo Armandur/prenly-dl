@@ -7,11 +7,9 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
-from ..api import Credentials
-from ..api import build_session
+from ..api import Credentials, build_session
 from ..config import output_root, timezone_name
 from ..covers import cached_cover_path, fetch_and_cache_cover
 from ..db import repository as repo
@@ -28,42 +26,12 @@ from ..scheduler import (
     reschedule_poll,
 )
 from ..services import discover_titles, poll_publication, verify_credentials
-from .auth import auth_enabled, check_password, is_authenticated
-from .filters import register_filters
+from .auth import check_password, is_authenticated
+from .rendering import STATUS_LABELS, back, flash, render
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-register_filters(templates.env)
-
-STATUS_LABELS = {
-    AuthStatus.OK.value: "OK",
-    AuthStatus.UNKNOWN.value: "Okänd",
-    AuthStatus.AUTH_ERROR.value: "Utloggad",
-    AuthStatus.SUBSCRIPTION_ERROR.value: "Ingen prenumeration",
-    AuthStatus.ERROR.value: "Fel",
-}
-
-
-def flash(request: Request, message: str, level: str = "info") -> None:
-    messages = request.session.setdefault("flashes", [])
-    messages.append({"text": message, "level": level})
-
-
-def pop_flashes(request: Request) -> list[dict]:
-    return request.session.pop("flashes", [])
-
-
-def render(request: Request, template: str, **context) -> HTMLResponse:
-    context.setdefault("flashes", pop_flashes(request))
-    context.setdefault("auth_enabled", auth_enabled())
-    context.setdefault("status_labels", STATUS_LABELS)
-    return templates.TemplateResponse(request, template, context)
-
-
-def back(url: str = "/") -> RedirectResponse:
-    return RedirectResponse(url, status_code=303)
 
 
 # --------------------------------------------------------------------------
@@ -102,6 +70,7 @@ def logout(request: Request):
 def index(request: Request):
     with get_session() as session:
         publications = repo.list_publications(session)
+        stats = repo.dashboard_stats(session)
         jobs = repo.list_jobs(session, limit=10)
         issues = repo.list_issues(session, limit=10)
         rows = [
@@ -111,6 +80,7 @@ def index(request: Request):
     return render(
         request,
         "index.html",
+        stats=stats,
         rows=rows,
         jobs=jobs,
         issues=issues,
@@ -371,44 +341,6 @@ def download_issue_now(request: Request, issue_id: int, force: str = Form("")):
     else:
         flash(request, f"Köade nedladdning av {issue.name}", "success")
     return back(f"/publications/{slug}" if slug else "/jobs")
-
-
-@router.get("/jobs", response_class=HTMLResponse)
-def jobs_page(request: Request):
-    with get_session() as session:
-        jobs = repo.list_jobs(session, limit=100)
-        publications = {p.id: p for p in repo.list_publications(session)}
-        issues = {i.id: i for i in repo.list_issues(session, limit=500)}
-    return render(
-        request, "jobs.html", jobs=jobs, publications=publications, issues=issues
-    )
-
-
-@router.post("/jobs/poll-all")
-def poll_all(request: Request):
-    with get_session() as session:
-        repo.enqueue_poll(session)
-    flash(request, "Katalogkontroll köad för alla aktiva publikationer", "success")
-    return back("/jobs")
-
-
-@router.get("/api/jobs")
-def jobs_json():
-    with get_session() as session:
-        jobs = repo.list_jobs(session, limit=25)
-        payload = [
-            {
-                "id": job.id,
-                "type": job.type,
-                "status": job.status,
-                "progress_done": job.progress_done,
-                "progress_total": job.progress_total,
-                "message": job.message,
-                "error": job.error,
-            }
-            for job in jobs
-        ]
-    return JSONResponse(payload)
 
 
 # --------------------------------------------------------------------------

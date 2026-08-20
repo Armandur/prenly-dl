@@ -59,14 +59,62 @@
   padding: 0.2rem;
 }
 .cover-large { width: 140px; height: 190px; border-radius: 6px; }
-.detail-head { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+.detail-head {
+  display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.detail-head hgroup { margin-bottom: 0; }
+.back-link { display: inline-block; font-size: 0.85rem; margin-bottom: 1rem; }
+
+/* Miniatyromslag i utgåvetabellen. */
+td.cover-cell { width: 3.5rem; padding-right: 0; }
+.cover-small { width: 40px; height: 55px; border-radius: 3px; }
+
+/* Statistikkort */
+.stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.stat-card {
+  flex: 1 1 10rem; min-width: 9rem; margin: 0; padding: 1rem 1.25rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.stat-card a { text-decoration: none; display: block; }
+.stat-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--pico-muted-color);
+}
+.stat-value { font-size: 1.75rem; font-weight: 700; line-height: 1.1; display: block; }
+.stat-value.stat-bad { color: #c9403f; }
+.stat-sub { font-size: 0.8rem; color: var(--pico-muted-color); }
+
+/* Filterchips på jobbsidan */
+.chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.chip {
+  border: 1px solid var(--pico-muted-border-color); border-radius: 999px;
+  padding: 0.3rem 0.9rem; font-size: 0.8rem; text-decoration: none;
+  color: var(--pico-muted-color);
+}
+.chip:hover { color: var(--pico-color); }
+.chip-active { border-color: var(--pico-primary); color: var(--pico-primary); }
+.chip-count { opacity: 0.7; margin-left: 0.2rem; }
+
+/* Sök- och filterrad */
+.filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-bar input[type="search"] { flex: 1 1 15rem; margin: 0; }
+
+pre.job-error { white-space: pre-wrap; word-break: break-word; margin: 0.5rem 0 0; }
 
 table { font-size: 0.9rem; }
+table td a[href^='/jobs/'] { white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
 .muted { color: var(--pico-muted-color); font-size: 0.85rem; }
 progress { margin: 0; width: 8rem; }
 
 @media (max-width: 600px) {
+  /* Navet fick ett objekt till och spillde över kanten på mobil. */
+  header nav { flex-wrap: wrap; }
+  header nav ul { flex-wrap: wrap; padding: 0; }
+  header nav li { padding: 0.25rem 0.5rem; }
+  .stat-card { flex-basis: 8rem; min-width: 7rem; padding: 0.75rem 0.9rem; }
+  .stat-value { font-size: 1.35rem; }
   .card-actions { flex-direction: column; align-items: stretch; }
   .card-actions form { display: block; }
   .card-actions button,

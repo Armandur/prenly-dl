@@ -1,67 +1,19 @@
 {% extends "base.html" %}
+{% block title %}Jobb - prenly-dl{% endblock %}
 {% block content %}
-<hgroup>
-  <h1>Jobb</h1>
-  <p>Uppdateras automatiskt var femte sekund.</p>
-</hgroup>
-<form method="post" action="/jobs/poll-all" style="margin-bottom:1rem">
-  <button class="secondary">Kontrollera alla nu</button>
-</form>
-<div class="scroll-x">
-<table id="jobs-table">
-  <thead>
-    <tr><th>Tid</th><th>Typ</th><th>Gäller</th><th>Status</th><th>Förlopp</th><th>Resultat</th></tr>
-  </thead>
-  <tbody>
-  {% for job in jobs %}
-    <tr data-job="{{ job.id }}">
-      <td>{{ job.created_at|local_time }}</td>
-      <td>{{ job.type }}</td>
-      <td>
-        {% if job.issue_id and issues.get(job.issue_id) %}{{ issues[job.issue_id].name }}
-        {% elif job.publication_id and publications.get(job.publication_id) %}{{ publications[job.publication_id].name }}
-        {% else %}alla{% endif %}
-      </td>
-      <td class="job-status"><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
-      <td class="job-progress">
-        {% if job.progress_total %}
-          <progress value="{{ job.progress_done }}" max="{{ job.progress_total }}"></progress>
-          {{ job.progress_done }}/{{ job.progress_total }}
-        {% else %}-{% endif %}
-      </td>
-      <td class="job-result">{{ job.error or job.message or "-" }}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="6">Inga jobb ännu</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<h1>Jobb</h1>
+
+<div class="card-actions" style="margin-bottom:1rem">
+  <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
 </div>
-{% endblock %}
-{% block scripts %}
-<script>
-const badgeClass = {ok:"ok", done:"ok", queued:"pending", running:"pending", error:"bad", cancelled:"neutral"};
-async function refresh() {
-  const response = await fetch("/api/jobs");
-  if (!response.ok) return;
-  const jobs = await response.json();
-  const kandaId = [...document.querySelectorAll("tr[data-job]")].map(r => Number(r.dataset.job));
-  const hogstaKanda = kandaId.length ? Math.max(...kandaId) : 0;
-  let nyttJobb = false;
-  for (const job of jobs) {
-    const row = document.querySelector(`tr[data-job="${job.id}"]`);
-    // Ladda bara om när ett jobb NYARE än tabellens nyaste dykt upp, annars
-    // triggar äldre jobb utanför API:ts fönster en oändlig omladdning.
-    if (!row) { if (job.id > hogstaKanda) nyttJobb = true; continue; }
-    const status = row.querySelector(".job-status span");
-    status.textContent = job.status;
-    status.className = "badge " + (badgeClass[job.status] || "neutral");
-    row.querySelector(".job-progress").textContent = job.progress_total
-      ? `${job.progress_done}/${job.progress_total}` : "-";
-    row.querySelector(".job-result").textContent = job.error || job.message || "-";
-  }
-  if (nyttJobb) location.reload();
-}
-setInterval(refresh, 5000);
-</script>
+
+<div class="chips">
+  {% for varde, etikett in status_filter %}
+    <a href="/jobs?status={{ varde }}" class="chip {% if varde == aktivt_filter %}chip-active{% endif %}">
+      {{ etikett }} <span class="chip-count">{{ counts.get(varde, 0) }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+{% include "jobs_table.html" %}
 {% endblock %}

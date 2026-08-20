@@ -34,6 +34,19 @@ def status_class(value: str | None) -> str:
     return STATUS_CLASSES.get(value or "", "neutral")
 
 
+def human_size(antal_byte: int | None) -> str:
+    """Filstorlek i läsbar form."""
+    if not antal_byte:
+        return "0 B"
+    varde = float(antal_byte)
+    for enhet in ("B", "kB", "MB", "GB"):
+        if varde < 1024 or enhet == "GB":
+            return f"{varde:.0f} {enhet}" if enhet == "B" else f"{varde:.1f} {enhet}"
+        varde /= 1024
+    return f"{varde:.1f} GB"
+
+
 def register_filters(env) -> None:
+    env.filters["human_size"] = human_size
     env.filters["local_time"] = local_time
     env.filters["status_class"] = status_class

@@ -1,0 +1,31 @@
+<div class="scroll-x" id="jobs-table"
+     hx-get="/jobs/table?status={{ aktivt_filter }}" hx-trigger="every 5s" hx-swap="outerHTML">
+<table>
+  <thead>
+    <tr><th>Tid</th><th>Typ</th><th>Gäller</th><th>Status</th><th>Förlopp</th><th>Resultat</th></tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
+      <td>{{ job.type }}</td>
+      <td>
+        {% if job.issue_id and issues.get(job.issue_id) %}{{ issues[job.issue_id].name }}
+        {% elif job.publication_id and publications.get(job.publication_id) %}{{ publications[job.publication_id].name }}
+        {% else %}alla{% endif %}
+      </td>
+      <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td>
+        {% if job.progress_total %}
+          <progress value="{{ job.progress_done }}" max="{{ job.progress_total }}"></progress>
+          {{ job.progress_done }}/{{ job.progress_total }}
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Inga jobb matchar filtret</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

@@ -14,6 +14,7 @@ from ..config import output_root, secret_key
 from ..db.session import init_db
 from ..scheduler import shutdown_scheduler, start_scheduler
 from .auth import require_login
+from .dashboard_routes import router as dashboard_router
 from .routes import router
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,9 @@ def create_app() -> FastAPI:
     app.middleware("http")(require_login)
     app.add_middleware(SessionMiddleware, secret_key=secret_key())
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    # Jobb- och biblioteksrutterna först: /jobs/{job_id} måste registreras
+    # före den generella publikationsrutten för att inte skuggas.
+    app.include_router(dashboard_router)
     app.include_router(router)
 
     @app.get("/healthz", include_in_schema=False)

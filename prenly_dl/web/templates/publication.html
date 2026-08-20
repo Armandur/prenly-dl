@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ publication.name }} - prenly-dl{% endblock %}
 {% block content %}
+<a href="/" class="back-link">&larr; Alla publikationer</a>
 <div class="detail-head">
   {% if latest and latest.cover_checksum %}
     <img class="cover cover-large"
@@ -28,10 +29,19 @@
 <h2>Utgåvor</h2>
 <div class="scroll-x">
 <table>
-  <thead><tr><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
+  <thead><tr><th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th></tr></thead>
   <tbody>
   {% for issue in issues %}
     <tr>
+      <td class="cover-cell">
+        {% if issue.cover_checksum %}
+          <img class="cover cover-small" loading="lazy"
+               src="/covers/{{ publication.id }}/{{ issue.cover_checksum }}.jpg"
+               alt="Omslag {{ issue.name }}">
+        {% else %}
+          <span class="cover cover-small cover-missing"></span>
+        {% endif %}
+      </td>
       <td>{{ issue.name }}</td>
       <td>{{ issue.publication_date or "-" }}</td>
       <td>
@@ -55,7 +65,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="6">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
+    <tr><td colspan="7">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -110,7 +120,7 @@
 <details style="margin-top:2rem">
   <summary>Ta bort publikationen</summary>
   <form method="post" action="/publications/{{ publication.id }}/delete"
-        onsubmit="return confirm('Ta bort {{ publication.name }} och all dess historik?')">
+        data-confirm="Ta bort {{ publication.name }} och all dess historik?">
     <button class="secondary">Ta bort {{ publication.name }}</button>
   </form>
 </details>

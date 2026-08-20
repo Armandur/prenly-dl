@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Bibliotek - prenly-dl{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>Bibliotek</h1>
+  <p class="muted">
+    Alla PDF:er som ligger under <code>{{ output_dir }}</code>. Filer som tagits bort
+    utanför prenly-dl försvinner härifrån men kan stå kvar som hämtade på
+    publikationssidan tills nästa katalogkontroll.
+  </p>
+</hgroup>
+
+<div class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Filer</span>
+    <span class="stat-value">{{ total_files }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Total storlek</span>
+    <span class="stat-value">{{ total_bytes|human_size }}</span>
+  </article>
+</div>
+
+{% if groups %}
+<div class="filter-bar">
+  <input id="lib-search" type="search" placeholder="Sök filnamn eller mapp" autocomplete="off">
+  <span id="lib-count" class="muted"></span>
+</div>
+
+{% for folder, files in groups %}
+<h2>{{ folder or "(rot)" }}</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Fil</th><th>Ändrad</th><th style="text-align:right">Storlek</th></tr></thead>
+  <tbody>
+  {% for file in files %}
+    <tr class="lib-row" data-haystack="{{ ((folder ~ '/' ~ file.name)|lower)|e }}">
+      <td><a href="/library/file/{{ file.rel_path|urlencode }}" target="_blank" rel="noopener">{{ file.name }}</a></td>
+      <td class="muted">{{ file.mtime|local_time }}</td>
+      <td class="muted" style="text-align:right">{{ file.size|human_size }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endfor %}
+{% else %}
+<article>Inga PDF:er hittade under <code>{{ output_dir }}</code>.</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const search = document.getElementById("lib-search");
+  const counter = document.getElementById("lib-count");
+  if (!search) return;
+  function filtrera() {
+    const q = (search.value || "").trim().toLowerCase();
+    let synliga = 0, totalt = 0;
+    document.querySelectorAll("tr.lib-row").forEach((rad) => {
+      totalt += 1;
+      const traff = !q || (rad.dataset.haystack || "").includes(q);
+      rad.style.display = traff ? "" : "none";
+      if (traff) synliga += 1;
+    });
+    counter.textContent = synliga + " / " + totalt;
+  }
+  search.addEventListener("input", filtrera);
+  filtrera();
+})();
+</script>
+{% endblock %}

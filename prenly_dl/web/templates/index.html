@@ -8,10 +8,19 @@
   </p>
 </hgroup>
 
+{% include "stats_cards.html" %}
+
 <div class="card-actions" style="margin-bottom:1rem">
   <a href="/publications/new" role="button">Lägg till publikation</a>
   <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
 </div>
+
+{% if rows|length > 3 %}
+<div class="filter-bar">
+  <input id="pub-search" type="search" placeholder="Sök publikation" autocomplete="off">
+  <span id="pub-count" class="muted"></span>
+</div>
+{% endif %}
 
 {% if not rows %}
   <article>Inga publikationer ännu. <a href="/publications/new">Lägg till den första</a>.</article>
@@ -20,7 +29,7 @@
 <div class="grid-cards">
 {% for row in rows %}
   {% set pub = row.publication %}
-  <article>
+  <article class="pub-card" data-haystack="{{ (pub.name ~ ' ' ~ pub.title_id)|lower }}">
     <div class="card-body">
       <div class="card-head">
         {% if row.latest and row.latest.cover_checksum %}
@@ -73,4 +82,27 @@
   </tbody>
 </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const search = document.getElementById("pub-search");
+  const counter = document.getElementById("pub-count");
+  if (!search) return;
+  function filtrera() {
+    const q = (search.value || "").trim().toLowerCase();
+    let synliga = 0, totalt = 0;
+    document.querySelectorAll("article.pub-card").forEach((kort) => {
+      totalt += 1;
+      const traff = !q || (kort.dataset.haystack || "").includes(q);
+      kort.style.display = traff ? "" : "none";
+      if (traff) synliga += 1;
+    });
+    counter.textContent = synliga + " / " + totalt;
+  }
+  search.addEventListener("input", filtrera);
+  filtrera();
+})();
+</script>
 {% endblock %}
