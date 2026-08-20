@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Katalog - prenly-dl{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>Katalog</h1>
+  <p class="muted">
+    Titlarna visas en gång per titel-ID. Aktivera en titel för att bevaka den:
+    nya utgåvor upptäcks då av den schemalagda katalogkontrollen.
+  </p>
+</hgroup>
+
+<div class="card-actions" style="margin-bottom:1.5rem">
+  <a href="/uppgifter" role="button">Hantera uppgifter</a>
+</div>
+
+{% include "catalogue_table.html" %}
+{% endblock %}

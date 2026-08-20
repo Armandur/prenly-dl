@@ -1,0 +1,57 @@
+<div id="katalogtabell">
+  {% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
+  {% if not rader %}
+    <article>
+      Katalogen visar det dina inloggningsuppgifter ger tillgång till.
+      <a href="/uppgifter">Lägg till en sajt</a> för att fylla den.
+    </article>
+  {% else %}
+  <div class="scroll-x">
+  <table>
+    <thead>
+      <tr><th>Bevakas</th><th>Omslag</th><th>Publikation</th><th>Titel-ID</th><th>Utgåvor</th><th>Åtkomst</th></tr>
+    </thead>
+    <tbody>
+    {% for rad in rader %}
+      {% set title = rad.title %}
+      {% set pub = rad.pub %}
+      <tr {% if not rad.lasbar %}class="rad-otillganglig"{% endif %}>
+        <td>
+          <form method="post" action="/katalog/{{ pub.id }}/toggle" class="inline"
+                hx-post="/katalog/{{ pub.id }}/toggle" hx-target="#katalogtabell" hx-swap="outerHTML">
+            <input type="hidden" name="aktiv" value="{{ '' if pub.enabled else 'on' }}">
+            <button class="secondary outline" {% if not rad.lasbar and not pub.enabled %}disabled{% endif %}>
+              {{ "På" if pub.enabled else "Av" }}
+            </button>
+          </form>
+        </td>
+        <td class="cover-cell">
+          {% if rad.senaste and rad.senaste.cover_checksum %}
+            <img class="cover cover-small" loading="lazy"
+                 src="/covers/{{ title.title_id }}/{{ rad.senaste.cover_checksum }}.jpg"
+                 data-lightbox-src="/covers/{{ title.title_id }}/{{ rad.senaste.cover_checksum }}.jpg?stor=1"
+                 alt="Omslag {{ title.name }}">
+          {% else %}<span class="cover cover-small cover-missing"></span>{% endif %}
+        </td>
+        <td>
+          <a href="/publications/{{ title.slug }}">{{ title.name }}</a>
+          {% if rad.senaste %}<br><span class="muted">{{ rad.senaste.name }}</span>{% endif %}
+          {% if pub.main_publication %}<br><span class="badge">Bilaga till {{ pub.main_publication.name }}</span>{% endif %}
+        </td>
+        <td>{{ title.title_id }}</td>
+        <td class="muted">{{ rad.utgavor or "-" }}</td>
+        <td>
+          {% for access in rad.atkomster %}
+            <span class="badge {{ 'ok' if access.readable else 'warn' }}">
+              {{ access.site.url }}: {{ "Läsrätt" if access.readable else "Ingen läsrätt" }}
+            </span>{% if not loop.last %}<br>{% endif %}
+          {% endfor %}
+          {% if pub.last_error %}<br><span class="muted">{{ pub.last_error }}</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,28 @@
+{% set site = post.site %}
+<tr id="sajt-{{ site.id }}">
+  <td class="site-url">{{ site.url }}</td>
+  <td>
+    <span class="badge {{ site.auth_status|status_class }}">{{ status_labels.get(site.auth_status, site.auth_status) }}</span>
+    {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}
+    {% if kortmeddelande %}<br><span class="kortbesked">{{ kortmeddelande }}</span>{% endif %}
+  </td>
+  <td class="muted">{{ site.auth_checked_at|local_time if site.auth_checked_at else "Aldrig" }}</td>
+  <td>{{ post.antal }} titlar, {{ post.lasbara }} läsbara</td>
+  <td>
+    <div class="card-actions">
+      <form method="post" action="/sites/{{ site.id }}/verify"
+            hx-post="/sites/{{ site.id }}/verify" hx-target="#sajt-{{ site.id }}" hx-swap="outerHTML">
+        <button class="secondary outline">Testa uppgifter</button>
+      </form>
+      <form method="post" action="/sites/{{ site.id }}/sync"
+            hx-post="/sites/{{ site.id }}/sync" hx-target="#sajt-{{ site.id }}" hx-swap="outerHTML">
+        <button class="secondary outline">Hämta titlar och omslag</button>
+      </form>
+      <form method="post" action="/sites/{{ site.id }}/delete"
+            hx-post="/sites/{{ site.id }}/delete" hx-target="#sajt-{{ site.id }}" hx-swap="outerHTML"
+            data-confirm="Ta bort {{ site.url }}?">
+        <button class="secondary outline">Ta bort</button>
+      </form>
+    </div>
+  </td>
+</tr>

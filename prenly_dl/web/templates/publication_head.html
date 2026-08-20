@@ -1,0 +1,50 @@
+<div id="pub-detalj">
+<div class="detail-head">
+  {% if latest and latest.cover_checksum %}
+    <img class="cover cover-large"
+         src="/covers/{{ publication.title_id }}/{{ latest.cover_checksum }}.jpg"
+         data-lightbox-src="/covers/{{ publication.title_id }}/{{ latest.cover_checksum }}.jpg?stor=1"
+         alt="Titelsida {{ latest.name }}">
+  {% else %}
+    <span class="cover cover-large cover-missing">Inget omslag</span>
+  {% endif %}
+  <hgroup>
+    <h1>{{ publication.name }}</h1>
+    <p>
+      {% if not site %}
+        <span class="badge warn">Ingen läsrätt</span>
+      {% elif publication.enabled %}
+        <span class="badge ok">Bevakas</span>
+      {% else %}
+        <span class="badge neutral">Inaktiv</span>
+      {% endif %}
+      {% if site %}
+        <span class="badge {{ site.auth_status|status_class }}">
+          Uppgifter: {{ status_labels.get(site.auth_status, site.auth_status) }}
+        </span>
+        {% if site.auth_checked_at %}kontrollerad {{ site.auth_checked_at|local_time }}{% endif %}
+        {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}
+      {% endif %}
+      {% if publication.last_error %}<br><span class="muted">{{ publication.last_error }}</span>{% endif %}
+      {% if kortmeddelande %}<br><span class="kortbesked">{{ kortmeddelande }}</span>{% endif %}
+      <br><span class="muted">
+        Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste ·
+        {% if site %}<a href="/uppgifter">{{ site.url }}</a>{% else %}ingen läsbar sajt{% endif %}
+      </span>
+    </p>
+  </hgroup>
+</div>
+
+<div class="card-actions" style="margin-bottom:1rem">
+  <form method="post" action="/publications/{{ publication.id }}/poll"
+        hx-post="/publications/{{ publication.id }}/poll"
+        hx-target="#pub-detalj" hx-swap="outerHTML">
+    <button>Kontrollera katalogen nu</button>
+  </form>
+  <form method="post" action="/publications/{{ publication.id }}/verify"
+        hx-post="/publications/{{ publication.id }}/verify"
+        hx-target="#pub-detalj" hx-swap="outerHTML">
+    <button class="secondary">Testa uppgifter</button>
+  </form>
+</div>
+</div>

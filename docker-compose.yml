@@ -1,0 +1,21 @@
+services:
+  prenly-dl:
+    build: .
+    image: armandur/prenly-dl:latest
+    container_name: prenly-dl
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data       # SQLite-databas med publikationer och jobbhistorik
+      - ./output:/output   # nedladdade PDF:er
+      - ./conf:/conf:ro    # gamla JSON-konfigurationer, för engångsimport
+    environment:
+      PRENLY_TZ: "${PRENLY_TZ:-Europe/Stockholm}"
+      PRENLY_SECRET_KEY: "${PRENLY_SECRET_KEY:-byt-mig-i-produktion}"
+      # Sätt ett lösenord om tjänsten kan nås av andra: databasen innehåller
+      # inloggningsuppgifter i klartext.
+      PRENLY_PASSWORD: "${PRENLY_PASSWORD:-}"
+    env_file:
+      - path: .env
+        required: false

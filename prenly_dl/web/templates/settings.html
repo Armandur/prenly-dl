@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Inställningar - prenly-dl{% endblock %}
+
+{% block scripts %}
+<dialog id="path-browser"
+        data-empty="Katalogen är tom"
+        data-writable="Skrivbar"
+        data-readonly="Skrivskyddad"
+        data-error="Katalogen kunde inte läsas">
+  <article>
+    <header>
+      <button type="button" class="close" aria-label="Stäng"></button>
+      <h2>Välj katalog</h2>
+      <p class="muted">Du ser containerns monterade kataloger. Sökvägen på värden kan ha ett annat namn.</p>
+    </header>
+    <div class="path-roots">
+      {% for root in browse_roots %}
+      <button type="button" class="secondary outline" data-root="{{ root.id }}">{{ root.path }}</button>
+      {% endfor %}
+    </div>
+    <nav class="path-breadcrumbs" aria-label="Aktuell sökväg">
+      <ol id="path-browser-breadcrumbs"></ol>
+    </nav>
+    <p id="path-browser-count" class="path-list-count muted"></p>
+    <ul id="path-browser-list" class="path-list" role="listbox"
+        aria-label="Kataloger" tabindex="0"></ul>
+    <footer>
+      <button type="button" class="secondary outline" id="path-browser-cancel">Avbryt</button>
+      <button type="button" id="path-browser-select">Välj denna katalog</button>
+    </footer>
+  </article>
+</dialog>
+<script>
+  (() => {
+    const dialog = document.getElementById("path-browser");
+    const list = document.getElementById("path-browser-list");
+    const breadcrumbs = document.getElementById("path-browser-breadcrumbs");
+    const count = document.getElementById("path-browser-count");
+    const select = document.getElementById("path-browser-select");
+    let targetInput = null;
+    let state = null;
+    let selectedIndex = -1;
+
+    function folderIcon() {
+      const namespace = "http://www.w3.org/2000/svg";
+      const icon = document.createElementNS(namespace, "svg");
+      const path = document.createElementNS(namespace, "path");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      path.setAttribute("d", "M3 6.5h7l2 2h9v10H3z");
+      icon.append(path);
+      return icon;
+    }
+
+    function renderBreadcrumbs() {
+      breadcrumbs.replaceChildren();
+      const parts = state.path ? state.path.split("/") : [];
+      const crumbs = [{ label: state.root_path, path: "" }];
+      parts.forEach((part, index) => {
+        crumbs.push({ label: part, path: parts.slice(0, index + 1).join("/") });
+      });
+      crumbs.forEach((crumb, index) => {
+        const item = document.createElement("li");
+        if (index === crumbs.length - 1) {
+          const label = document.createElement("span");
+          label.textContent = crumb.label;
+          label.setAttribute("aria-current", "location");
+          item.append(label);
+        } else {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = crumb.label;
+          button.addEventListener("click", () => load(state.root, crumb.path, true));
+          item.append(button);
+        }
+        breadcrumbs.append(item);
+      });
+    }
+
+    function mark(index) {
+      const rows = [...list.querySelectorAll("[role=option]")];
+      selectedIndex = rows.length ? Math.max(0, Math.min(index, rows.length - 1)) : -1;
+      rows.forEach((row, rowIndex) => {
+        const selected = rowIndex === selectedIndex;
+        row.classList.toggle("selected", selected);
+        row.setAttribute("aria-selected", String(selected));
+      });
+      if (selectedIndex >= 0) {
+        list.setAttribute("aria-activedescendant", rows[selectedIndex].id);
+        rows[selectedIndex].scrollIntoView({ block: "nearest" });
+      } else {
+        list.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    async function load(root, path = "", focusList = false) {
+      const query = new URLSearchParams({ root, path });
+      const response = await fetch(`/settings/directories?${query}`);
+      if (!response.ok) throw new Error(dialog.dataset.error);
+      state = await response.json();
+      selectedIndex = -1;
+      list.removeAttribute("aria-activedescendant");
+      renderBreadcrumbs();
+      const directoryCount = state.directories.length;
+      count.textContent = `${directoryCount} ${directoryCount === 1 ? "katalog" : "kataloger"}`;
+      select.disabled = !state.writable;
+      select.title = state.writable ? "" : dialog.dataset.readonly;
+      list.replaceChildren();
+      if (!state.directories.length) {
+        const empty = document.createElement("li");
+        empty.className = "muted";
+        empty.textContent = dialog.dataset.empty;
+        list.append(empty);
+      }
+      state.directories.forEach((directory, index) => {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        const status = document.createElement("small");
+        item.id = `path-option-${index}`;
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", "false");
+        name.className = "path-name";
+        name.append(folderIcon(), document.createTextNode(directory.name));
+        status.textContent = directory.writable ? dialog.dataset.writable : dialog.dataset.readonly;
+        status.className = directory.writable ? "path-writable" : "path-readonly";
+        item.addEventListener("click", () => {
+          mark(index);
+          list.focus();
+        });
+        item.addEventListener("dblclick", () => load(state.root, directory.path, true));
+        item.append(name, status);
+        list.append(item);
+      });
+      if (focusList) list.focus();
+    }
+
+    list.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        mark(selectedIndex < 0 ? (step > 0 ? 0 : state.directories.length - 1) : selectedIndex + step);
+      } else if (event.key === "Enter" && selectedIndex >= 0) {
+        event.preventDefault();
+        load(state.root, state.directories[selectedIndex].path, true);
+      } else if (event.key === "Backspace" && state.parent !== null) {
+        event.preventDefault();
+        load(state.root, state.parent, true);
+      }
+    });
+
+    document.querySelectorAll(".path-browser-open").forEach((button) => {
+      button.addEventListener("click", async () => {
+        targetInput = document.getElementById(button.dataset.pathTarget);
+        dialog.showModal();
+        try {
+          const root = document.querySelector("[data-root]").dataset.root;
+          await load(root, "", true);
+        } catch (error) {
+          list.textContent = error.message;
+        }
+      });
+    });
+    document.querySelectorAll("[data-root]").forEach((button) => {
+      button.addEventListener("click", () => load(button.dataset.root, "", true));
+    });
+    select.addEventListener("click", () => {
+      if (targetInput && state && state.writable) targetInput.value = state.absolute_path;
+      dialog.close();
+    });
+    dialog.querySelector(".close").addEventListener("click", () => dialog.close());
+    document.getElementById("path-browser-cancel").addEventListener("click", () => dialog.close());
+  })();
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>Inställningar</h1>
+
+<article>
+  <h2>Schema</h2>
+  <p class="muted">
+    Tidszon: {{ timezone }} ·
+    Nästa körning: {{ next_poll|local_time if next_poll else "inte schemalagd" }}
+  </p>
+  <form method="post" action="/settings">
+    <label>Katalogkontroll (cron med fem fält)
+      <input name="poll_cron" value="{{ poll_cron }}" required>
+      <small>Till exempel <code>0 6 * * *</code> för varje dag klockan 06:00.</small>
+    </label>
+    <label>Spara jobbhistorik (dagar)
+      <input type="number" name="history_days" min="1" value="{{ history_days }}">
+    </label>
+    <button type="submit">Spara</button>
+  </form>
+</article>
+
+<article>
+  <h2>Utdata</h2>
+  <p>PDF:erna hamnar under <code>{{ output_dir }}</code>, i en mapp per publikation.</p>
+  <p class="muted">Ändras med miljövariabeln <code>PRENLY_OUTPUT</code>.</p>
+</article>
+
+<article>
+  <h2>Importera gamla konfigurationsfiler</h2>
+  <p class="muted">Läser in alla <code>*.json</code> i katalogen och skapar publikationer av dem.</p>
+  <form method="post" action="/settings/import">
+    <label>Katalog
+      <span role="group" class="path-field">
+        <input id="import-directory" name="directory" placeholder="/conf" required>
+        <button type="button" class="secondary outline path-browser-open"
+                data-path-target="import-directory" aria-label="Bläddra bland kataloger">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+        </button>
+      </span>
+      <small class="muted">
+        Väljaren visar bara kataloger som är monterade i containern, inte
+        värdens fullständiga katalogträd.
+      </small>
+    </label>
+    <button class="secondary" type="submit">Importera</button>
+  </form>
+</article>
+{% endblock %}

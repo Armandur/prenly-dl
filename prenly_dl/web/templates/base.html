@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}prenly-dl{% endblock %}</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="container">
+    <nav>
+      <ul><li><strong><a href="/">prenly-dl</a></strong></li></ul>
+      <ul>
+        <li><a href="/">Översikt</a></li>
+        <li><a href="/katalog">Katalog</a></li>
+        <li><a href="/uppgifter">Uppgifter</a></li>
+        <li><a href="/library">Bibliotek</a></li>
+        <li><a href="/jobs">Jobb</a></li>
+        <li><a href="/settings">Inställningar</a></li>
+        {% if auth_enabled %}
+        <li><form method="post" action="/logout" class="inline"><button class="secondary outline">Logga ut</button></form></li>
+        {% endif %}
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {% for flash in flashes %}
+      <article class="flash flash-{{ flash.level }}">{{ flash.text }}</article>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+
+  {# Egen bekräftelseruta i stället för webbläsarens confirm(), som inte går
+     att formge och prefixar texten med adressen. #}
+  <dialog id="confirm-dialog">
+    <article>
+      <p id="confirm-text"></p>
+      <footer class="card-actions">
+        <button class="secondary outline" id="confirm-no">Avbryt</button>
+        <button id="confirm-yes" autofocus>Bekräfta</button>
+      </footer>
+    </article>
+  </dialog>
+  <script>
+    (function () {
+      const dialog = document.getElementById("confirm-dialog");
+      const text = document.getElementById("confirm-text");
+      let vantande = null;
+
+      function avgor(ok) {
+        const form = vantande;
+        vantande = null;
+        if (dialog.open) dialog.close();
+        if (ok && form) form.submit();
+      }
+      document.getElementById("confirm-yes").addEventListener("click", () => avgor(true));
+      document.getElementById("confirm-no").addEventListener("click", () => avgor(false));
+      dialog.addEventListener("cancel", (e) => { e.preventDefault(); avgor(false); });
+      dialog.addEventListener("click", (e) => { if (e.target === dialog) avgor(false); });
+
+      document.querySelectorAll("form[data-confirm]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          if (vantande === form) return;
+          event.preventDefault();
+          text.textContent = form.dataset.confirm;
+          vantande = form;
+          dialog.showModal();
+        });
+      });
+    })();
+  </script>
+  {# Markering av utgåvor. Delegerat på body eftersom htmx byter ut
+     utgåvesektionen vid bläddring, pollning och batchåtgärder - en
+     lyssnare per kryssruta skulle sluta fungera efter första swappen. #}
+  <script>
+    (() => {
+      const rutor = () => [...document.querySelectorAll(".valj-utgava")];
+      const valda = () => rutor().filter((r) => r.checked);
+
+      function uppdatera() {
+        const alla = document.getElementById("valj-utgavor");
+        const antal = document.getElementById("batch-antal");
+        const lista = rutor();
+        const markerade = valda();
+        if (alla) {
+          alla.checked = lista.length > 0 && markerade.length === lista.length;
+          alla.indeterminate = markerade.length > 0 && markerade.length < lista.length;
+        }
+        if (antal) {
+          antal.textContent = markerade.length
+            ? `${markerade.length} av ${lista.length} markerade`
+            : "Inget markerat";
+        }
+        document.querySelectorAll("[data-batch]").forEach((knapp) => {
+          knapp.disabled = markerade.length === 0;
+        });
+      }
+
+      document.body.addEventListener("change", (event) => {
+        if (event.target.id === "valj-utgavor") {
+          rutor().forEach((r) => { r.checked = event.target.checked; });
+          uppdatera();
+        } else if (event.target.classList.contains("valj-utgava")) {
+          uppdatera();
+        }
+      });
+
+      // Raderna byts ut under fötterna vid bläddring, så ett urval från
+      // föregående sida skulle peka på utgåvor man inte längre ser.
+      document.body.addEventListener("htmx:afterSwap", (event) => {
+        if (event.target && event.target.id === "utgavor") uppdatera();
+      });
+      document.addEventListener("DOMContentLoaded", uppdatera);
+      uppdatera();
+    })();
+  </script>
+
+  {# Förhandsgranskning: bygget tar minuter för en tjock utgåva, så
+     knappen visar det och fliken öppnas först när filen finns. Delegerad
+     lyssnare eftersom htmx byter ut utgåvetabellen. #}
+  <script>
+    (() => {
+      document.body.addEventListener("click", async (event) => {
+        const knapp = event.target.closest("button.forhandsgranska");
+        if (!knapp || knapp.disabled) return;
+        event.preventDefault();
+
+        // Har bygget redan gjorts räcker det att öppna fliken.
+        if (knapp.dataset.klar) {
+          const redan = window.open(knapp.dataset.klar, "_blank");
+          if (redan) redan.opener = null;
+          return;
+        }
+
+        const ursprunglig = knapp.textContent.trim();
+        // Lås bredden innan texten byts, annars krymper knappen när
+        // "Förhandsgranska" blir "Bygger" och raden hoppar till.
+        knapp.style.minWidth = knapp.offsetWidth + "px";
+        knapp.disabled = true;
+        knapp.setAttribute("aria-busy", "true");
+        knapp.textContent = "Bygger";
+
+        try {
+          const svar = await fetch(knapp.dataset.preview, { method: "POST" });
+          const data = await svar.json();
+          if (!svar.ok) throw new Error(data.error || "Förhandsgranskningen misslyckades");
+
+          knapp.removeAttribute("aria-busy");
+          knapp.disabled = false;
+          // Popup-skyddet stoppar window.open långt efter klicket, så när
+          // det händer lämnas en knapp kvar att trycka på. Flaggan noopener
+          // kan inte skickas med: då returnerar open alltid null och det
+          // gick inte att skilja en blockering från en öppnad flik.
+          const flik = window.open(data.url, "_blank");
+          if (flik) {
+            flik.opener = null;
+            knapp.textContent = ursprunglig;
+            knapp.style.minWidth = "";
+          } else {
+            knapp.dataset.klar = data.url;
+            knapp.textContent = "Öppna förhandsgranskning";
+            // Den texten är bredare än den låsta bredden.
+            knapp.style.minWidth = "";
+          }
+        } catch (fel) {
+          knapp.removeAttribute("aria-busy");
+          knapp.disabled = false;
+          knapp.textContent = "Misslyckades";
+          knapp.title = String(fel.message || fel);
+          setTimeout(() => {
+            knapp.textContent = ursprunglig;
+            knapp.removeAttribute("title");
+          }, 6000);
+        }
+      });
+    })();
+  </script>
+
+  {# Ett gemensamt dialogelement och delegerad lyssnare behövs eftersom
+     htmx byter ut elementen som innehåller omslagen. #}
+  <dialog class="cover-lightbox" id="cover-lightbox">
+    <img id="cover-lightbox-img" alt="">
+  </dialog>
+  <script>
+    (function () {
+      const dialog = document.getElementById("cover-lightbox");
+      const img = document.getElementById("cover-lightbox-img");
+      if (!dialog || !img) return;
+
+      document.body.addEventListener("click", (event) => {
+        const trigger = event.target.closest("img[data-lightbox-src]");
+        if (!trigger) return;
+        event.preventDefault();
+        img.onerror = function () {
+          img.onerror = null;
+          img.src = trigger.getAttribute("src");
+        };
+        img.alt = trigger.getAttribute("alt") || "";
+        img.src = trigger.getAttribute("data-lightbox-src");
+        dialog.showModal();
+      });
+
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      dialog.addEventListener("close", () => { img.removeAttribute("src"); });
+    })();
+  </script>
+</body>
+</html>

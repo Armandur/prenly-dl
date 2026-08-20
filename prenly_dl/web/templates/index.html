@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<hgroup>
+  <h1>Publikationer</h1>
+  <p>
+    Utdata: <code>{{ output_dir }}</code> ·
+    Nästa katalogkontroll: {{ next_poll|local_time if next_poll else "inte schemalagd" }}
+  </p>
+</hgroup>
+
+{% include "stats_cards.html" %}
+
+<div class="card-actions" style="margin-bottom:1rem">
+  <a href="/katalog" role="button">Katalog</a>
+  <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
+</div>
+
+{% if rows|length > 3 %}
+<div class="filter-bar">
+  <input id="pub-search" type="search" placeholder="Sök publikation" autocomplete="off">
+  <span id="pub-count" class="muted"></span>
+</div>
+{% endif %}
+
+{% if not rows %}
+  <article>
+    Inga publikationer bevakas. <a href="/katalog">Aktivera dem i katalogen</a>,
+    eller <a href="/uppgifter">hämta inloggningsuppgifter</a> om katalogen är tom.
+  </article>
+{% endif %}
+
+<div class="grid-cards">
+{% for row in rows %}
+  {% set pub = row.publication %}
+  <article class="pub-card" data-haystack="{{ (pub.name ~ ' ' ~ pub.title_id)|lower }}">
+    <div class="card-body">
+      <div class="card-head">
+        {% if row.latest and row.latest.cover_checksum %}
+          <img class="cover" loading="lazy"
+               src="/covers/{{ pub.title_id }}/{{ row.latest.cover_checksum }}.jpg"
+               data-lightbox-src="/covers/{{ pub.title_id }}/{{ row.latest.cover_checksum }}.jpg?stor=1"
+               alt="Titelsida {{ row.latest.name }}">
+        {% else %}
+          <span class="cover cover-missing">Inget omslag</span>
+        {% endif %}
+        <div class="card-title">
+          <a href="/publications/{{ pub.slug }}"><strong>{{ pub.name }}</strong></a>
+          {% if pub.main_publication %}<br><span class="badge">Bilaga till {{ pub.main_publication.name }}</span>{% endif %}
+          {# Läsrätten hör till titeln, uppgifterna till sajten. Märkningen
+             visas bara när något är fel - annars säger den ingenting. #}
+          {%- set visa_lasratt = not pub.readable %}
+          {%- set visa_sajt = not row.site or row.site.auth_status != "ok" %}
+          {%- if visa_lasratt or visa_sajt %}<br>{% endif %}
+          {%- if visa_lasratt %}<span class="badge warn">Ingen läsrätt</span>{% endif %}
+          {%- if visa_sajt and row.site %}
+            <span class="badge {{ row.site.auth_status|status_class }}">{{ status_labels.get(row.site.auth_status, row.site.auth_status) }}</span>
+          {%- endif %}
+        </div>
+      </div>
+      <p class="muted">
+        Titel-ID {{ pub.title_id }} · bevakar {{ pub.watch_limit }} senaste<br>
+        {% if row.latest %}
+          Senaste utgåva: {{ row.latest.name }}
+          <span class="badge {{ row.latest.status|status_class }}">{{ row.latest.status }}</span>
+        {% else %}
+          Inga kända utgåvor
+        {% endif %}
+        <br>
+        {% if row.filer %}
+          {{ row.filer }} {{ "fil" if row.filer == 1 else "filer" }} på disk ·
+          {{ row.storlek|human_size }}
+        {% else %}
+          Inget hämtat till disk
+        {% endif %}
+      </p>
+      {% if pub.last_error %}<p class="muted">{{ pub.last_error }}</p>
+      {% elif row.site and row.site.auth_message %}<p class="muted">{{ row.site.auth_message }}</p>{% endif %}
+    </div>
+    <div class="card-actions">
+      <form method="post" action="/publications/{{ pub.id }}/poll"><button class="secondary outline">Kontrollera nu</button></form>
+      <form method="post" action="/sites/{{ row.site.id }}/verify" {% if not row.site %}hidden{% endif %}><button class="secondary outline">Testa uppgifter</button></form>
+    </div>
+  </article>
+{% endfor %}
+</div>
+
+<h2>Senaste jobb</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Tid</th><th>Typ</th><th>Gäller</th><th>Status</th><th>Resultat</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
+      <td>{{ job.type }}</td>
+      <td>
+        {% set pub = job_publications.get(job.publication_id) %}
+        {% set sajt = job_sites.get(job.site_id) %}
+        {% if pub %}<a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
+        {% elif sajt %}<a href="/katalog">{{ sajt.url }}</a>
+        {% else %}alla publikationer{% endif %}
+      </td>
+      <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td>{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5">Inga jobb ännu</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const search = document.getElementById("pub-search");
+  const counter = document.getElementById("pub-count");
+  if (!search) return;
+  function filtrera() {
+    const q = (search.value || "").trim().toLowerCase();
+    let synliga = 0, totalt = 0;
+    document.querySelectorAll("article.pub-card").forEach((kort) => {
+      totalt += 1;
+      const traff = !q || (kort.dataset.haystack || "").includes(q);
+      kort.style.display = traff ? "" : "none";
+      if (traff) synliga += 1;
+    });
+    counter.textContent = synliga + " / " + totalt;
+  }
+  search.addEventListener("input", filtrera);
+  filtrera();
+})();
+</script>
+{% endblock %}

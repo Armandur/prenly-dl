@@ -1,0 +1,240 @@
+:root { --pico-font-size: 100%; }
+
+.inline { display: inline; margin: 0; }
+.inline button { margin: 0; }
+
+.flash { padding: 0.6rem 1rem; margin-bottom: 1rem; border-left: 4px solid var(--pico-primary); }
+.flash-success { border-color: #2e9e5b; }
+.flash-error { border-color: #c9403f; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 1rem;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+}
+.badge.ok { background: #d6f0e0; color: #1d4d33; }
+.badge.pending { background: #d6e8f0; color: #1d3a4d; }
+.badge.warn { background: #f0e8d0; color: #4d411d; }
+.badge.bad { background: #f0d6d6; color: #4d1d1d; }
+.badge.neutral { background: #e4e4e4; color: #444; }
+
+@media (prefers-color-scheme: dark) {
+  .badge.ok { background: #1d4d33; color: #9fe0b8; }
+  .badge.pending { background: #1d3a4d; color: #9fcbe0; }
+  .badge.warn { background: #4d411d; color: #e0d29f; }
+  .badge.bad { background: #4d1d1d; color: #e09f9f; }
+  .badge.neutral { background: #333; color: #ccc; }
+}
+
+.grid-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); }
+/* Ankare med role="button" och riktiga <button> ska se lika ut: Picos
+   defaultpadding gäller bara ankaret, så båda måste träffas av regeln. */
+.card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: stretch; }
+.card-actions form { margin: 0; display: flex; }
+.card-actions button,
+.card-actions [role="button"] {
+  margin: 0; padding: 0.35rem 0.8rem; font-size: 0.85rem;
+  line-height: 1.5; white-space: nowrap; text-align: center;
+}
+
+/* Korten är lika höga i sin rad, så knapparna ska ligga i botten oavsett
+   hur mycket text kortet har. */
+.grid-cards > article {
+  display: flex; flex-direction: column; height: 100%; margin: 0;
+}
+.grid-cards > article > .card-body { flex: 1; }
+.grid-cards > article > .card-actions { margin-top: auto; }
+
+.card-head { display: flex; gap: 0.75rem; align-items: flex-start; }
+.card-head .card-title { flex: 1; min-width: 0; }
+
+.cover {
+  width: 60px; height: 82px; object-fit: cover; border-radius: 4px;
+  background: var(--pico-code-background-color); flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.cover-missing {
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--pico-muted-border-color); box-shadow: none;
+  font-size: 0.7rem; color: var(--pico-muted-color); text-align: center;
+  padding: 0.2rem;
+}
+.cover-large { width: 140px; height: 190px; border-radius: 6px; }
+dialog.cover-lightbox {
+  border: none; background: transparent; padding: 14px;
+  max-width: 92vw; max-height: 92vh; margin: auto;
+}
+dialog.cover-lightbox::backdrop { background: rgba(9, 9, 16, 0.85); }
+/* showModal() fokuserar dialogen. Den saknar kontroller, så fokusringen
+   tillför inget men skulle rita en ram runt bilden. Escape fungerar ändå. */
+dialog.cover-lightbox:focus,
+dialog.cover-lightbox:focus-visible { outline: none; }
+dialog.cover-lightbox img {
+  display: block; max-width: 100%; max-height: calc(92vh - 28px);
+  border-radius: 8px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+img[data-lightbox-src] { cursor: pointer; }
+.detail-head {
+  display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.detail-head hgroup { margin-bottom: 0; }
+.back-link { display: inline-block; font-size: 0.85rem; margin-bottom: 1rem; }
+
+/* Miniatyromslag i utgåvetabellen. */
+td.cover-cell { width: 3.5rem; padding-right: 0; }
+.cover-small { width: 40px; height: 55px; border-radius: 3px; }
+
+/* Statistikkort */
+.stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.stat-card {
+  flex: 1 1 10rem; min-width: 9rem; margin: 0; padding: 1rem 1.25rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.stat-card a { text-decoration: none; display: block; }
+.stat-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--pico-muted-color);
+}
+.stat-value { font-size: 1.75rem; font-weight: 700; line-height: 1.1; display: block; }
+.stat-value.stat-bad { color: #c9403f; }
+.stat-sub { font-size: 0.8rem; color: var(--pico-muted-color); }
+
+/* Filterchips på jobbsidan */
+.chips { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.chip {
+  border: 1px solid var(--pico-muted-border-color); border-radius: 999px;
+  padding: 0.3rem 0.9rem; font-size: 0.8rem; text-decoration: none;
+  color: var(--pico-muted-color);
+}
+.chip:hover { color: var(--pico-color); }
+.chip-active { border-color: var(--pico-primary); color: var(--pico-primary); }
+.chip-count { opacity: 0.7; margin-left: 0.2rem; }
+
+/* Sök- och filterrad */
+.filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-bar input[type="search"] { flex: 1 1 15rem; margin: 0; }
+
+.issues-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+}
+.issues-toolbar p { margin: 0; }
+/* Flex-barn krymper inte under sitt innehåll utan min-width: 0, och en
+   sajt-URL är lång nog att spilla över kanten på en mobil. */
+.issues-toolbar > * { min-width: 0; }
+.site-url { overflow-wrap: anywhere; }
+.issues-toolbar form { margin: 0; }
+.issues-toolbar button { margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem; }
+.year-jump { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.year-jump select { margin: 0; width: auto; padding: 0.35rem 2rem 0.35rem 0.7rem; font-size: 0.85rem; }
+
+.page-numbers { display: flex; align-items: center; gap: 0.15rem; flex-wrap: wrap; }
+.page-numbers a, .page-current, .page-gap {
+  min-width: 2rem; padding: 0.3rem 0.5rem; text-align: center;
+  border-radius: 4px; font-size: 0.85rem; text-decoration: none;
+}
+.page-numbers a:hover { background: var(--pico-code-background-color); }
+.page-current { background: var(--pico-primary); color: var(--pico-primary-inverse); font-weight: 600; }
+.page-gap { color: var(--pico-muted-color); min-width: 1rem; }
+
+.pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin: 1rem 0 2rem;
+}
+.pagination [role="button"] { margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem; }
+
+.rad-otillganglig td { opacity: 0.55; }
+.kortbesked { font-size: 0.85rem; color: var(--pico-primary); }
+
+.batch-rad {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  margin: 0.75rem 0 0;
+}
+/* Pico ger formulärknappar full bredd; här ska de ligga på rad. */
+.batch-rad button {
+  margin: 0; padding: 0.35rem 0.9rem; font-size: 0.85rem;
+  width: auto; flex: 0 0 auto;
+}
+.batch-rad #batch-antal { margin-right: auto; }
+td .valj-utgava, th #valj-utgavor { margin: 0; }
+
+/* Spinnern lägger sig före texten som ett ::before med egen marginal, så
+   innehållet måste centreras aktivt för att stå mitt i knappen. */
+button.forhandsgranska {
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { display: inline; }
+
+pre.job-error { white-space: pre-wrap; word-break: break-word; margin: 0.5rem 0 0; }
+
+table { font-size: 0.9rem; }
+table td a[href^='/jobs/'] { white-space: nowrap; }
+.scroll-x { overflow-x: auto; }
+.site-table { min-width: 60rem; }
+.muted { color: var(--pico-muted-color); font-size: 0.85rem; }
+progress { margin: 0; width: 8rem; }
+
+@media (max-width: 600px) {
+  /* Navet fick ett objekt till och spillde över kanten på mobil. */
+  header nav { flex-wrap: wrap; }
+  header nav ul { flex-wrap: wrap; padding: 0; }
+  header nav li { padding: 0.25rem 0.5rem; }
+  .credentials-title { font-size: 1.75rem; }
+  .stat-card { flex-basis: 8rem; min-width: 7rem; padding: 0.75rem 0.9rem; }
+  .stat-value { font-size: 1.35rem; }
+  .card-actions { flex-direction: column; align-items: stretch; }
+  .card-actions form { display: block; }
+  .card-actions button,
+  .card-actions [role="button"] { width: 100%; display: block; }
+}
+.path-field { align-items: stretch; }
+.path-field .path-browser-open { flex: 0 0 3rem; margin: 0; padding: 0.7rem; }
+.path-browser-open svg {
+  display: block; width: 1.2rem; height: 1.2rem; margin: auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+}
+.path-roots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.path-roots button { width: auto; margin: 0; padding: 0.4rem 0.7rem; }
+.path-breadcrumbs { overflow-x: auto; margin-bottom: 0.75rem; }
+.path-breadcrumbs ol {
+  display: flex; align-items: center; min-width: max-content;
+  margin: 0; padding: 0 0.1rem;
+}
+.path-breadcrumbs li { display: flex; align-items: center; padding: 0; }
+.path-breadcrumbs li:not(:last-child)::after {
+  content: "/"; padding: 0 0.45rem; color: var(--pico-muted-color);
+}
+.path-breadcrumbs button {
+  width: auto; margin: 0; padding: 0; border: 0; background: none;
+  color: var(--pico-primary); box-shadow: none; font: inherit;
+}
+.path-breadcrumbs [aria-current="location"] { font-weight: 600; }
+.path-list-count { margin: 0 0 0.35rem; text-align: right; }
+.path-list {
+  min-height: 8rem; max-height: 18rem; overflow-y: auto;
+  list-style: none; padding: 0; margin: 0 0 1rem;
+  border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius);
+}
+.path-list li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin: 0; padding: 0.55rem 0.75rem; cursor: default;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.path-list li:last-child { border-bottom: 0; }
+.path-list li[role="option"]:hover { background: var(--pico-code-background-color); }
+.path-list li[role="option"].selected {
+  background: var(--pico-primary-background); color: var(--pico-primary-inverse);
+}
+.path-list li[role="option"].selected small { color: inherit; }
+.path-name { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.path-name svg { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; fill: currentColor; }
+.path-writable { color: #2e9e5b; }
+.path-readonly { color: #c9403f; }
+
+@media (prefers-color-scheme: dark) {
+  .path-writable { color: #9fe0b8; }
+  .path-readonly { color: #e09f9f; }
+}

@@ -1,0 +1,161 @@
+{# Pollningen är igång bara medan en utgåva är på väg in, annars skulle
+   varje öppen publikationssida fråga i onödan. #}
+<div id="utgavor"
+     hx-get="/publications/{{ publication.slug }}/issues?page={{ page }}"
+     hx-trigger="utgavor-andrade from:body{% if pagar %}, every 5s{% endif %}"
+     hx-swap="outerHTML">
+{% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
+<h2>Utgåvor</h2>
+<div class="issues-toolbar">
+  <p class="muted">
+    {{ total_issues }} kända utgåvor{% if publication.catalogue_complete %},
+    sida {{ page }} av {{ sista_sidan }}{% else %}, fler finns längre bak i katalogen{% endif %}.
+    {% if issues %}Visar {{ (page - 1) * page_size + 1 }}-{{ (page - 1) * page_size + issues|length }}.{% endif %}
+  </p>
+  {% if ar_lista %}
+    <label class="year-jump">
+      <span class="muted">Hoppa till år</span>
+      <select name="ar"
+              hx-get="/publications/{{ publication.slug }}/year"
+              hx-target="#utgavor" hx-swap="outerHTML show:#utgavor:top"
+              hx-include="this">
+        <option value="">Välj år</option>
+        {% for ar in ar_lista %}
+          <option value="{{ ar }}">{{ ar }}</option>
+        {% endfor %}
+      </select>
+      <noscript>
+        <button type="submit" formaction="/publications/{{ publication.slug }}/year"
+                formmethod="get">Hoppa</button>
+      </noscript>
+    </label>
+  {% elif not publication.catalogue_complete %}
+    <form method="post" action="/publications/{{ publication.id }}/catalogue">
+      <button class="secondary outline">Hämta hela katalogen</button>
+    </form>
+  {% endif %}
+</div>
+
+{% if issues %}
+<form method="post" id="batch-utgavor" class="batch-rad"
+      action="/publications/{{ publication.id }}/issues/batch"
+      hx-post="/publications/{{ publication.id }}/issues/batch"
+      hx-target="#utgavor" hx-swap="outerHTML">
+  <input type="hidden" name="page" value="{{ page }}">
+  <span class="muted" id="batch-antal">Inget markerat</span>
+  <button type="submit" class="secondary outline" disabled data-batch>Ladda ner markerade</button>
+  <button type="submit" class="secondary outline" disabled data-batch
+          name="force" value="on">Tvinga om markerade</button>
+</form>
+{% endif %}
+
+<div class="scroll-x">
+<table>
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="valj-utgavor" aria-label="Markera alla på sidan"></th>
+      <th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for issue in issues %}
+    <tr>
+      <td>
+        <input type="checkbox" class="valj-utgava" form="batch-utgavor"
+               name="valda" value="{{ issue.id }}"
+               aria-label="Markera {{ issue.name }}">
+      </td>
+      <td class="cover-cell">
+        {% if issue.cover_checksum %}
+          <img class="cover cover-small" loading="lazy"
+               src="/covers/{{ publication.title_id }}/{{ issue.cover_checksum }}.jpg"
+               data-lightbox-src="/covers/{{ publication.title_id }}/{{ issue.cover_checksum }}.jpg?stor=1"
+               alt="Omslag {{ issue.name }}">
+        {% else %}
+          <span class="cover cover-small cover-missing"></span>
+        {% endif %}
+      </td>
+      <td>{{ issue.name }}</td>
+      <td>{{ issue.publication_date or "-" }}</td>
+      <td>
+        <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
+        {% if issue.error %}<br><span class="muted">{{ issue.error }}</span>{% endif %}
+      </td>
+      <td>{{ issue.page_count or "-" }}</td>
+      <td class="muted" title="{{ issue.file_path or "" }}">
+        {% if issue.rel_path %}
+          <a href="/library/file/{{ issue.rel_path|urlencode }}" target="_blank" rel="noopener">
+            {{ issue.file_path.split("/")[-1] }}
+          </a>
+        {% elif issue.file_path %}
+          {{ issue.file_path.split("/")[-1] }}
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        <div class="card-actions">
+          {# En hämtad utgåva har redan filen, och filnamnet är en länk
+             till den - att bygga en andra kopia vore slöseri. #}
+          {% if issue.status != "done" %}
+            <button class="secondary outline forhandsgranska"
+                    data-preview="/issues/{{ issue.id }}/preview">
+              Förhandsgranska
+            </button>
+          {% endif %}
+          {% if issue.status != "done" %}
+            <form method="post" action="/issues/{{ issue.id }}/download" class="inline"
+                  hx-post="/issues/{{ issue.id }}/download"
+                  hx-target="#utgavor" hx-swap="outerHTML">
+              <input type="hidden" name="page" value="{{ page }}">
+              <button class="secondary outline">Ladda ner</button>
+            </form>
+          {% endif %}
+          <form method="post" action="/issues/{{ issue.id }}/download" class="inline"
+                hx-post="/issues/{{ issue.id }}/download"
+                hx-target="#utgavor" hx-swap="outerHTML">
+            <input type="hidden" name="force" value="on">
+            <input type="hidden" name="page" value="{{ page }}">
+            <button class="secondary outline">Tvinga om</button>
+          </form>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+
+{% if page > 1 or har_fler %}
+<nav class="pagination">
+  {% if page > 1 %}
+    <a href="/publications/{{ publication.slug }}?page={{ page - 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page - 1 }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ page - 1 }}" role="button" class="secondary outline">&larr; Nyare</a>
+  {% else %}
+    <span></span>
+  {% endif %}
+
+  {% if sidor %}
+    <span class="page-numbers">
+      {% for nummer in sidor %}
+        {% if nummer is none %}
+          <span class="page-gap">&hellip;</span>
+        {% elif nummer == page %}
+          <span class="page-current" aria-current="page">{{ nummer }}</span>
+        {% else %}
+          <a href="/publications/{{ publication.slug }}?page={{ nummer }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ nummer }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ nummer }}">{{ nummer }}</a>
+        {% endif %}
+      {% endfor %}
+    </span>
+  {% else %}
+    <span class="muted">Sida {{ page }}</span>
+  {% endif %}
+
+  {% if har_fler %}
+    <a href="/publications/{{ publication.slug }}?page={{ page + 1 }}" hx-get="/publications/{{ publication.slug }}/issues?page={{ page + 1 }}" hx-target="#utgavor" hx-swap="outerHTML" hx-push-url="/publications/{{ publication.slug }}?page={{ page + 1 }}" role="button" class="secondary outline">Äldre &rarr;</a>
+  {% else %}
+    <span></span>
+  {% endif %}
+</nav>
+{% endif %}
+</div>

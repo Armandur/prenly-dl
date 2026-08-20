@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<article style="max-width:24rem;margin:3rem auto">
+  <h1>Logga in</h1>
+  <form method="post" action="/login">
+    <label>Lösenord
+      <input type="password" name="password" autofocus required>
+    </label>
+    <button type="submit">Logga in</button>
+  </form>
+</article>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ publication.name }} - prenly-dl{% endblock %}
+{% block content %}
+<a href="/" class="back-link">&larr; Alla publikationer</a>
+{% include "publication_head.html" %}
+
+{% include "issues_section.html" %}
+
+<h2>Inställningar</h2>
+<form method="post" action="/publications/{{ publication.id }}/edit">
+  <div class="grid">
+    <label>Namn<input name="name" value="{{ publication.name }}" required></label>
+    <label>Antal senaste utgåvor att bevaka<input type="number" name="watch_limit" min="1" value="{{ publication.watch_limit }}"></label>
+  </div>
+  <div class="grid">
+    <label>Prefix på filnamn<input name="prefix" value="{{ publication.prefix }}"></label>
+    <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
+  </div>
+  <label>Bilaga till
+    <select name="main_publication_id">
+      <option value="">Ingen - egen publikation</option>
+      {% for candidate in main_candidates %}
+        <option value="{{ candidate.id }}" {% if publication.main_publication_id == candidate.id %}selected{% endif %}>
+          {{ candidate.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <p class="muted">
+    Bilagor lagras en nivå under huvudpublikationens mapp. Listan visar bevakade
+    huvudpublikationer samt det nuvarande valet.
+  </p>
+  <p class="muted">
+    Inloggningsuppgifterna väljs automatiskt bland sajterna som ger läsrätt till titeln.
+    {% if site %}Aktuell sajt: <a href="/uppgifter">{{ site.url }}</a>.{% endif %} Blir statusen "Utloggad":
+    <a href="/uppgifter">hämta nya med konsolsnutten</a> och klistra in dem en
+    gång, så gäller de här med.
+  </p>
+  <label>
+    <input type="checkbox" name="enabled" {% if publication.enabled %}checked{% endif %}>
+    Bevaka (ingår i schemalagd katalogkontroll, nya utgåvor köas)
+  </label>
+  <button type="submit">Spara</button>
+</form>
+
+<h2>Jobbhistorik</h2>
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Tid</th><th>Typ</th><th>Status</th><th>Resultat</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ job.id }}">{{ job.created_at|local_time }}</a></td>
+      <td>{{ job.type }}</td>
+      <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>
+      <td>{{ job.error or job.message or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">Inga jobb ännu</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<details style="margin-top:2rem">
+  <summary class="muted">Ta bort publikationen ur katalogen</summary>
+  <form method="post" action="/publications/{{ publication.id }}/delete"
+        data-confirm="Ta bort {{ publication.name }} och all dess historik?">
+    <button class="secondary">Ta bort {{ publication.name }}</button>
+  </form>
+</details>
+{% endblock %}

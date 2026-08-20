@@ -1,39 +1,25 @@
-FROM alpine:3.14
+FROM python:3.12-slim
+
+# img2pdf behöver libjpeg/zlib via Pillow-hjulen, som redan är förbyggda.
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PRENLY_DB=/data/prenly.db \
+    PRENLY_OUTPUT=/output \
+    PRENLY_TZ=Europe/Stockholm
+
 WORKDIR /app
 
-RUN apk add curl
-RUN apk add unzip
+COPY pyproject.toml README.md ./
+COPY prenly_dl ./prenly_dl
+RUN pip install --no-cache-dir ".[web]"
 
-# Install python/pip
+RUN mkdir -p /data /output /conf
 
-ENV PYTHONUNBUFFERED=1
-RUN apk add --update python3 && ln -sf python3 /usr/bin/python
+VOLUME ["/data", "/output"]
+EXPOSE 8000
 
-RUN python3 -m ensurepip
-RUN pip3 install --upgrade pip setuptools
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"
 
-# Install reqs
-# TODO Why won't pipenv install work?
-RUN apk add py3-pikepdf
-RUN pip install requests pypdf2 img2pdf
-
-# Download and unzip
-# Always get latest commit == always newest files
-ADD "https://api.github.com/repos/Armandur/prenly-dl/commits?per_page=1" latest_commit
-RUN curl -L https://github.com/Armandur/prenly-dl/archive/refs/heads/main.zip -o "main.zip" && unzip "main.zip"
-RUN mv prenly-dl-main/* . && rm -rf prenly-dl-main/ && rm main.zip
-
-# Make configuration and output directory
-RUN mkdir /conf
-RUN mkdir /output
-RUN chmod 755 /conf /output
-
-ENV CONF_FILE="default.json"
-
-# Create startup-script
-RUN echo "python /app/prenly-dl.py --json=/conf/\$CONF_FILE" > /app/startup.sh
-
-WORKDIR /output
-#Used for compatibility with Unraid
-USER 99:100
-ENTRYPOINT ["/bin/sh", "/app/startup.sh"]
+ENTRYPOINT ["prenly-dl"]
+CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]
