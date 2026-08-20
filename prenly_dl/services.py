@@ -385,25 +385,62 @@ def run_download_job(session: Session, job: Job) -> str:
     def progress(done: int, total: int) -> None:
         repo.update_job_progress(job_id, done, total)
 
-    site = _site_for_publication(session, publication)
-    http = build_session()
-    try:
-        result = download_issue(
-            http,
-            repo.credentials_for_site(site),
-            publication.title_id,
-            issue.uid,
-            publication_output_dir(publication),
-            prefix=publication.prefix,
-            force=job.force,
-            progress=progress,
+    sajter = repo.sites_for_title(session, publication.title_id)
+    if not sajter:
+        fel = PrenlySubscriptionError(
+            f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
         )
-    except PrenlyError as error:
         issue.status = IssueStatus.ERROR.value
-        issue.error = str(error)
+        issue.error = str(fel)
         session.add(issue)
-        _record_error(session, publication, site, error)
-        raise
+        raise fel
+
+    http = build_session()
+    result, site, provade = None, None, []
+    for kandidat in sajter:
+        try:
+            result = download_issue(
+                http,
+                repo.credentials_for_site(kandidat),
+                publication.title_id,
+                issue.uid,
+                publication_output_dir(publication),
+                prefix=publication.prefix,
+                force=job.force,
+                progress=progress,
+            )
+        except (PrenlyAuthError, PrenlySubscriptionError) as error:
+            # Behörighetsfel gäller den här sajten. En annan uppgift kan
+            # fungera, så gå vidare i stället för att fälla jobbet.
+            _record_error(session, publication, kandidat, error)
+            session.commit()
+            provade.append(f"{kandidat.url}: {error}")
+            continue
+        except PrenlyError as error:
+            # Nätverksfel och trasiga filer botas inte av en annan auth.
+            issue.status = IssueStatus.ERROR.value
+            issue.error = str(error)
+            session.add(issue)
+            _record_error(session, publication, kandidat, error)
+            raise
+        site = kandidat
+        break
+
+    if result is None:
+        fel = PrenlyError(
+            f"Ingen fungerande inloggning för {publication.name}: "
+            + "; ".join(provade)
+        )
+        issue.status = IssueStatus.ERROR.value
+        issue.error = str(fel)
+        session.add(issue)
+        raise fel
+
+    if site is not sajter[0]:
+        logger.info(
+            "%s hämtades via %s sedan %s fallerat",
+            publication.name, site.url, sajter[0].url,
+        )
 
     issue.status = IssueStatus.DONE.value
     issue.error = None

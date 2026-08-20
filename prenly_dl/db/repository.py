@@ -191,19 +191,33 @@ def title_is_readable(title: Title) -> bool:
     return any(access.readable for access in title.accesses)
 
 
+def sites_for_title(session: Session, title_id: int) -> list[Site]:
+    """Sajter som ger läsrätt till titeln, bäst först.
+
+    Flera uppgifter kan ge åtkomst till samma tidning, och då ska ett
+    utgånget token inte stoppa nedladdningen. Ordningen sätter fungerande
+    uppgifter först; sajter utan läsrätt utesluts helt, eftersom de ger 403
+    oavsett tokenets skick.
+    """
+    # Sortera i Python: ordningen är en bedömning, inte en kolumn.
+    rang = {AuthStatus.OK.value: 0, AuthStatus.UNKNOWN.value: 1}
+    sajter = list(
+        session.execute(
+            select(Site)
+            .join(TitleAccess)
+            .where(
+                TitleAccess.title_id == title_id,
+                TitleAccess.readable.is_(True),
+            )
+        ).scalars()
+    )
+    return sorted(sajter, key=lambda s: (rang.get(s.auth_status, 2), s.url))
+
+
 def site_for_title(session: Session, title_id: int) -> Site | None:
-    """Välj en fungerande sajt som uttryckligen ger läsrätt till titeln."""
-    return session.execute(
-        select(Site)
-        .join(TitleAccess)
-        .where(
-            TitleAccess.title_id == title_id,
-            TitleAccess.readable.is_(True),
-            Site.auth_status == AuthStatus.OK.value,
-        )
-        .order_by(Site.url)
-        .limit(1)
-    ).scalar_one_or_none()
+    """Den sajt som bör användas i första hand, eller None."""
+    sajter = sites_for_title(session, title_id)
+    return sajter[0] if sajter else None
 
 
 # --------------------------------------------------------------------------

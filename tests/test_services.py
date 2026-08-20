@@ -290,3 +290,120 @@ def test_nedladdningsjobb_ger_begripligt_fel_utan_lasbar_sajt(db):
         assert job.error == (
             "Ingen av dina inloggningsuppgifter ger läsrätt till Expressen"
         )
+
+
+def test_sites_for_title_sorterar_fungerande_forst(db):
+    """Flera uppgifter kan ge åtkomst; de som fungerar ska provas först."""
+    from prenly_dl.db.models import AuthStatus
+
+    with db() as session:
+        trasig = repo.upsert_site(session, "https://a.se", {"textalk-auth": "k", "auth": "1"})
+        repo.set_site_status(session, trasig, AuthStatus.AUTH_ERROR, "Inte autentiserad.")
+        bra = repo.upsert_site(session, "https://b.se", {"textalk-auth": "k", "auth": "2"})
+        repo.set_site_status(session, bra, AuthStatus.OK)
+        utan = repo.upsert_site(session, "https://c.se", {"textalk-auth": "k", "auth": "3"})
+        repo.set_site_status(session, utan, AuthStatus.OK)
+
+        repo.upsert_title_access(session, trasig, 259, "Expressen", readable=True)
+        repo.upsert_title_access(session, bra, 259, "Expressen", readable=True)
+        # Utan läsrätt ska aldrig provas - den ger 403 oavsett token.
+        repo.upsert_title_access(session, utan, 259, "Expressen", readable=False)
+        session.flush()
+
+        ordning = [s.url for s in repo.sites_for_title(session, 259)]
+
+    assert ordning == ["https://b.se", "https://a.se"]
+
+
+def _publikation_med_tva_sajter(db):
+    from prenly_dl.db.models import AuthStatus
+
+    with db() as session:
+        forsta = repo.upsert_site(session, "https://a.se", {"textalk-auth": "k", "auth": "1"})
+        andra = repo.upsert_site(session, "https://b.se", {"textalk-auth": "k", "auth": "2"})
+        for site in (forsta, andra):
+            repo.set_site_status(session, site, AuthStatus.OK)
+            repo.upsert_title_access(session, site, 259, "Expressen", readable=True)
+        title = repo.get_title(session, 259)
+        publication = repo.get_publication_for_title(session, 259)
+        publication.enabled = True
+        session.add(publication)
+        issue, _ = repo.upsert_issue(session, title, {"uid": "1", "name": "2026-01-01"})
+        job = repo.enqueue_download(session, issue)
+        session.flush()
+        return job.id, issue.id
+
+
+def test_nedladdning_faller_over_till_nasta_auth(db, monkeypatch):
+    """Ett utgånget token ska inte stoppa en titel som nås via två sajter."""
+    job_id, issue_id = _publikation_med_tva_sajter(db)
+    provade = []
+
+    def _forsta_faller(http, creds, title_id, uid, output_dir, prefix="",
+                       force=False, progress=None):
+        provade.append(creds.site)
+        if creds.site == "https://a.se":
+            raise PrenlyAuthError("Inte autentiserad.")
+        return downloader.DownloadResult(output_dir / "klar.pdf", 3)
+
+    monkeypatch.setattr(services, "download_issue", _forsta_faller)
+    monkeypatch.setattr(services, "build_session", lambda: None)
+
+    with db() as session:
+        job = repo.claim_next_job(session)
+        services.execute_job(session, job)
+
+    assert provade == ["https://a.se", "https://b.se"]
+    with db() as session:
+        assert repo.get_issue(session, issue_id).status == IssueStatus.DONE.value
+        job = session.get(Job, job_id)
+        assert job.status == JobStatus.DONE.value
+        # Sajten vars token föll ska märkas, så uppgiftsvyn visar det.
+        trasig = repo.find_site(session, "https://a.se")
+        assert trasig.auth_status == "auth_error"
+
+
+def test_natverksfel_utloser_inte_failover(db, monkeypatch):
+    """Att prova en annan auth botar inte ett fel som inte rör behörighet."""
+    from prenly_dl.errors import PrenlyHTTPError
+
+    job_id, issue_id = _publikation_med_tva_sajter(db)
+    provade = []
+
+    def _natverksfel(http, creds, title_id, uid, output_dir, prefix="",
+                     force=False, progress=None):
+        provade.append(creds.site)
+        raise PrenlyHTTPError(None, "https://cdn", "Nätverksfel")
+
+    monkeypatch.setattr(services, "download_issue", _natverksfel)
+    monkeypatch.setattr(services, "build_session", lambda: None)
+
+    with db() as session:
+        job = repo.claim_next_job(session)
+        services.execute_job(session, job)
+
+    assert provade == ["https://a.se"], "bara den första sajten ska ha provats"
+    with db() as session:
+        assert session.get(Job, job_id).status == JobStatus.ERROR.value
+
+
+def test_ingen_lasratt_ger_begripligt_fel(db, monkeypatch):
+    from prenly_dl.db.models import AuthStatus
+
+    with db() as session:
+        site = repo.upsert_site(session, "https://a.se", {"textalk-auth": "k", "auth": "1"})
+        repo.set_site_status(session, site, AuthStatus.OK)
+        repo.upsert_title_access(session, site, 259, "Expressen", readable=False)
+        title = repo.get_title(session, 259)
+        issue, _ = repo.upsert_issue(session, title, {"uid": "1", "name": "x"})
+        repo.enqueue_download(session, issue)
+
+    with db() as session:
+        job = repo.claim_next_job(session)
+        services.execute_job(session, job)
+
+    with db() as session:
+        job = repo.list_jobs(session)[0]
+        assert job.status == JobStatus.ERROR.value
+        assert "Expressen" in job.error
+        assert "läsrätt" in job.error
