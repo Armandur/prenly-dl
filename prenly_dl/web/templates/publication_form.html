@@ -4,14 +4,11 @@
 {% set fill = prefill or {} %}
 <h1>Lägg till publikation</h1>
 
-<article>
-  <h2>Klistra in från konsolsnutten</h2>
-  <p class="muted">
-    Ett block eller hela konsolutskriften - båda funkar, och flera
-    publikationer kan läggas till på en gång.
-  </p>
-  <a href="/uppgifter#klistra" role="button" class="secondary">Till inklistringsytan</a>
-</article>
+{% include "paste_form.html" %}
+
+<p class="muted">
+  Har du inga uppgifter än? <a href="/uppgifter">Hämta dem med konsolsnutten</a>.
+</p>
 
 <article>
   <h2>Se vad uppgifterna ger tillgång till</h2>

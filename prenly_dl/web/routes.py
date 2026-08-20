@@ -163,7 +163,10 @@ def cover_image(publication_id: int, checksum: str):
 
 @router.get("/publications/new", response_class=HTMLResponse)
 def new_publication_form(request: Request):
-    return render(request, "publication_form.html", publication=None, titles=None)
+    return render(
+        request, "publication_form.html", publication=None, titles=None,
+        fynd=None, fyndfel=None,
+    )
 
 
 def _konsolsnutt() -> str:
@@ -181,10 +184,19 @@ def credentials_help(request: Request):
 
 
 def _rendera_fynd(request: Request, fynd: list | None, fyndfel: str | None):
-    """Bara resultatlistan för htmx, hela sidan utan JavaScript."""
+    """Bara resultatlistan för htmx, hela sidan utan JavaScript.
+
+    Utan JavaScript renderas den sida användaren kom ifrån - ytan finns
+    både under Hämta inloggningsuppgifter och Lägg till publikation.
+    """
     if request.headers.get("HX-Request"):
         return render(
             request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel, flashes=[]
+        )
+    if "/publications/new" in request.headers.get("referer", ""):
+        return render(
+            request, "publication_form.html", publication=None, titles=None,
+            fynd=fynd, fyndfel=fyndfel,
         )
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd, fyndfel=fyndfel
@@ -365,6 +377,56 @@ def create_publication(
     return back(f"/publications/{slug}")
 
 
+def _utgavekontext(session, publication, page: int) -> dict:
+    """Allt utgåvetabellen behöver för en given sida."""
+    # Bläddring bakåt fyller på ur katalogen. Redan hämtade utgåvor
+    # läses ur databasen och kostar inga anrop.
+    fel = None
+    try:
+        ensure_catalogue_depth(session, publication, page * PAGE_SIZE)
+    except PrenlyError as error:
+        fel = f"Kunde inte hämta äldre utgåvor: {error}"
+
+    total = repo.count_issues(session, publication.id)
+    # Katalogen kan ta slut mitt i en begärd sida - backa till den sista
+    # som faktiskt har utgåvor i stället för att visa en tom tabell.
+    sista_sidan = max(1, -(-total // PAGE_SIZE))
+    page = min(page, sista_sidan)
+    return {
+        "publication": publication,
+        "issues": repo.list_issues(
+            session, publication.id, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE
+        ),
+        "page": page,
+        "page_size": PAGE_SIZE,
+        "total_issues": total,
+        "sista_sidan": sista_sidan,
+        "har_fler": total > page * PAGE_SIZE or not publication.catalogue_complete,
+        # Sidnummer och årshopp kräver att katalogen är helt hämtad: annars
+        # räknas de ut från halva underlaget och pekar fel.
+        "sidor": sidnummer(page, sista_sidan) if publication.catalogue_complete else [],
+        "ar_lista": (
+            repo.issue_years(session, publication.id)
+            if publication.catalogue_complete
+            else []
+        ),
+        "_fel": fel,
+    }
+
+
+@router.get("/publications/{slug}/issues", response_class=HTMLResponse)
+def publication_issues(request: Request, slug: str, page: int = 1):
+    """Bara utgåvesektionen, för bläddring utan omladdning."""
+    with get_session() as session:
+        publication = repo.get_publication_by_slug(session, slug)
+        if publication is None:
+            return back("/")
+        kontext = _utgavekontext(session, publication, max(1, page))
+    if kontext.pop("_fel"):
+        flash(request, "Kunde inte hämta äldre utgåvor", "error")
+    return render(request, "issues_section.html", flashes=[], **kontext)
+
+
 @router.get("/publications/{slug}", response_class=HTMLResponse)
 def publication_detail(request: Request, slug: str, page: int = 1):
     page = max(1, page)
@@ -374,47 +436,15 @@ def publication_detail(request: Request, slug: str, page: int = 1):
             flash(request, "Publikationen finns inte", "error")
             return back("/")
 
-        # Bläddring bakåt fyller på ur katalogen. Redan hämtade utgåvor
-        # läses ur databasen och kostar inga anrop.
-        try:
-            ensure_catalogue_depth(session, publication, page * PAGE_SIZE)
-        except PrenlyError as error:
-            flash(request, f"Kunde inte hämta äldre utgåvor: {error}", "error")
-
-        total = repo.count_issues(session, publication.id)
-        # Katalogen kan ta slut mitt i en begärd sida - backa till den sista
-        # som faktiskt har utgåvor i stället för att visa en tom tabell.
-        sista_sidan = max(1, -(-total // PAGE_SIZE))
-        page = min(page, sista_sidan)
-        issues = repo.list_issues(
-            session, publication.id, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE
-        )
+        kontext = _utgavekontext(session, publication, page)
         latest = repo.latest_issue(session, publication.id)
-        har_fler = total > page * PAGE_SIZE or not publication.catalogue_complete
-        # Sidnummer och årshopp kräver att katalogen är helt hämtad: annars
-        # räknas de ut från halva underlaget och pekar fel.
-        sidor = sidnummer(page, sista_sidan) if publication.catalogue_complete else []
-        ar_lista = (
-            repo.issue_years(session, publication.id)
-            if publication.catalogue_complete
-            else []
-        )
         jobs = [j for j in repo.list_jobs(session, limit=200)
                 if j.publication_id == publication.id][:20]
+    fel = kontext.pop("_fel")
+    if fel:
+        flash(request, fel, "error")
     return render(
-        request,
-        "publication.html",
-        publication=publication,
-        issues=issues,
-        latest=latest,
-        jobs=jobs,
-        page=page,
-        page_size=PAGE_SIZE,
-        total_issues=total,
-        har_fler=har_fler,
-        sidor=sidor,
-        sista_sidan=sista_sidan,
-        ar_lista=ar_lista,
+        request, "publication.html", latest=latest, jobs=jobs, **kontext
     )
 
 
@@ -468,8 +498,8 @@ def fetch_catalogue(request: Request, publication_id: int):
     return back(f"/publications/{slug}")
 
 
-@router.get("/publications/{slug}/year/{ar}")
-def jump_to_year(request: Request, slug: str, ar: str):
+@router.get("/publications/{slug}/year")
+def jump_to_year(request: Request, slug: str, ar: str = ""):
     """Hoppa till sidan där ett år börjar.
 
     Utgåvor har inget sidnummer i användarens huvud - de har ett årtal.
@@ -480,8 +510,17 @@ def jump_to_year(request: Request, slug: str, ar: str):
         if publication is None:
             flash(request, "Publikationen finns inte", "error")
             return back("/")
-        nyare = repo.issues_newer_than_year(session, publication.id, ar)
-    return back(f"/publications/{slug}?page={nyare // PAGE_SIZE + 1}")
+        if not ar.isdigit():
+            return back(f"/publications/{slug}")
+        page = repo.issues_newer_than_year(session, publication.id, ar) // PAGE_SIZE + 1
+        if not request.headers.get("HX-Request"):
+            return back(f"/publications/{slug}?page={page}")
+        kontext = _utgavekontext(session, publication, page)
+        kontext.pop("_fel")
+    svar = render(request, "issues_section.html", flashes=[], **kontext)
+    # htmx pushar annars årshoppets egen adress; sidan är den delbara.
+    svar.headers["HX-Push-Url"] = f"/publications/{slug}?page={kontext['page']}"
+    return svar
 
 
 @router.post("/publications/{publication_id}/verify")

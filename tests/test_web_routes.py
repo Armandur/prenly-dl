@@ -322,3 +322,37 @@ def test_granskning_utan_javascript_ger_hela_sidan(client):
     assert "<!doctype html>" in svar.text.lower()
     assert "Klistra in resultatet" in svar.text
     assert "Hittade 2 publikationer" in svar.text
+
+
+def test_inklistringsytan_finns_pa_lagg_till_sidan(client):
+    svar = client.get("/publications/new")
+    assert svar.status_code == 200
+    assert 'id="klistra"' in svar.text
+    assert 'hx-post="/uppgifter/granska"' in svar.text
+
+
+def test_flera_publikationer_gar_lika_bra_fran_lagg_till_sidan(client):
+    svar = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": KONSOLUTSKRIFT},
+        headers={"HX-Request": "true", "Referer": "http://test/publications/new"},
+    )
+    assert "Hittade 2 publikationer" in svar.text
+
+
+def test_utan_javascript_renderas_sidan_man_kom_ifran(client):
+    fran_ny = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": KONSOLUTSKRIFT},
+        headers={"Referer": "http://test/publications/new"},
+    )
+    assert "Eller fyll i för hand" in fran_ny.text
+    assert "Hittade 2 publikationer" in fran_ny.text
+
+    fran_uppgifter = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": KONSOLUTSKRIFT},
+        headers={"Referer": "http://test/uppgifter"},
+    )
+    assert "PrenlyData" in fran_uppgifter.text
+    assert "Hittade 2 publikationer" in fran_uppgifter.text

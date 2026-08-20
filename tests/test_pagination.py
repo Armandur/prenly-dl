@@ -181,7 +181,7 @@ def test_arshopp_landar_pa_ratt_sida(client, publikation, monkeypatch):
         ar = repo.issue_years(session, publikation)
     assert ar, "årslistan ska inte vara tom"
 
-    svar = client.get(f"/publications/tidningen/year/{ar[-1]}", follow_redirects=False)
+    svar = client.get(f"/publications/tidningen/year?ar={ar[-1]}", follow_redirects=False)
     assert svar.status_code == 303
     assert "page=" in svar.headers["location"]
 
