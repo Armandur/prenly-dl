@@ -237,3 +237,54 @@ def test_toggle_slar_pa_och_av(client):
     client.post(f"/katalog/{pub_id}/toggle", data={"aktiv": ""}, follow_redirects=True)
     with get_session() as session:
         assert repo.get_publication(session, pub_id).enabled is False
+
+
+def test_kortets_raknare_foljer_med_nar_titlar_slas_pa_och_av(client, monkeypatch):
+    """Rubrikens "N bevakas" räknas om i det fragment som byts in."""
+    import re
+
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        for title_id, namn in ((1, "Ettan"), (2, "Tvåan"), (3, "Trean")):
+            pub, _ = repo.upsert_publication(session, site, title_id, namn)
+            pub.enabled = False
+            session.add(pub)
+        session.flush()
+        site_id = site.id
+        pub_ids = [p.id for p in repo.list_publications(session, site_id=site_id)]
+
+    def bevakas(html: str) -> int:
+        m = re.search(r"(\d+) bevakas", html)
+        return int(m.group(1)) if m else -1
+
+    assert bevakas(client.get("/katalog").text) == 0
+
+    svar = client.post(
+        f"/katalog/{pub_ids[0]}/toggle",
+        data={"aktiv": "on"},
+        headers={"HX-Request": "true"},
+    )
+    assert bevakas(svar.text) == 1
+    # Bara märkningen, inte kolumnrubriken som heter likadant.
+    assert svar.text.count('<span class="badge ok">Bevakas</span>') == 1
+
+    svar = client.post(
+        f"/katalog/{pub_ids[1]}/toggle",
+        data={"aktiv": "on"},
+        headers={"HX-Request": "true"},
+    )
+    assert bevakas(svar.text) == 2
+
+    svar = client.post(
+        f"/katalog/{pub_ids[0]}/toggle",
+        data={"aktiv": ""},
+        headers={"HX-Request": "true"},
+    )
+    assert bevakas(svar.text) == 1
+
+    # Och sidan visar samma sak efter en omladdning.
+    assert bevakas(client.get("/katalog").text) == 1
