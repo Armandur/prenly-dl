@@ -175,25 +175,38 @@ def _konsolsnutt() -> str:
 @router.get("/uppgifter", response_class=HTMLResponse)
 def credentials_help(request: Request):
     """Konsolsnutten och ytan att klistra in resultatet på."""
-    return render(request, "credentials.html", snutt=_konsolsnutt(), fynd=None)
+    return render(
+        request, "credentials.html", snutt=_konsolsnutt(), fynd=None, fyndfel=None
+    )
+
+
+def _rendera_fynd(request: Request, fynd: list | None, fyndfel: str | None):
+    """Bara resultatlistan för htmx, hela sidan utan JavaScript."""
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "credentials_fynd.html", fynd=fynd, fyndfel=fyndfel, flashes=[]
+        )
+    return render(
+        request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd, fyndfel=fyndfel
+    )
 
 
 @router.post("/uppgifter/granska", response_class=HTMLResponse)
 def review_pasted(request: Request, klistrat: str = Form("")):
     """Visa vad som hittades i den klistrade texten innan något sparas."""
     if not klistrat.strip():
-        flash(request, "Klistra in det du fick från konsolsnutten först", "error")
-        return back("/uppgifter")
+        return _rendera_fynd(
+            request, None, "Klistra in det du fick från konsolsnutten först"
+        )
 
     konfigurationer = extract_configs(klistrat)
     if not konfigurationer:
-        flash(
+        return _rendera_fynd(
             request,
+            None,
             "Hittade ingen konfiguration i texten. Kopiera hela utskriften från "
             "konsolen, eller ett helt JSON-block.",
-            "error",
         )
-        return back("/uppgifter")
 
     fynd = []
     with get_session() as session:
@@ -210,7 +223,7 @@ def review_pasted(request: Request, klistrat: str = Form("")):
                 "befintlig": befintlig.name if befintlig else None,
                 "slug": befintlig.slug if befintlig else None,
             })
-    return render(request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd)
+    return _rendera_fynd(request, fynd, None)
 
 
 @router.post("/uppgifter/spara")

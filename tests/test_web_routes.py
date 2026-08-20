@@ -289,3 +289,36 @@ def test_ett_block_fornyar_befintliga_uppgifter(client):
         assert publikationer[3121].auth == "ny"
         assert publikationer[3181].auth == "def"
         assert len(publikationer) == 2
+
+
+def test_granskning_via_htmx_ger_bara_fragmentet(client):
+    svar = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": KONSOLUTSKRIFT},
+        headers={"HX-Request": "true"},
+    )
+    assert svar.status_code == 200
+    assert 'id="fynd"' in svar.text
+    assert "Hittade 2 publikationer" in svar.text
+    # Fragmentet ska inte dra med sig hela sidan igen.
+    assert "<!doctype html>" not in svar.text.lower()
+    assert "Klistra in resultatet" not in svar.text
+
+
+def test_htmx_fel_visas_i_fragmentet_utan_omdirigering(client):
+    svar = client.post(
+        "/uppgifter/granska",
+        data={"klistrat": "bara brus"},
+        headers={"HX-Request": "true"},
+        follow_redirects=False,
+    )
+    assert svar.status_code == 200
+    assert "Hittade ingen konfiguration" in svar.text
+    assert 'id="fynd"' in svar.text
+
+
+def test_granskning_utan_javascript_ger_hela_sidan(client):
+    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    assert "<!doctype html>" in svar.text.lower()
+    assert "Klistra in resultatet" in svar.text
+    assert "Hittade 2 publikationer" in svar.text
