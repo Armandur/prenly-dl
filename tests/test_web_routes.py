@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from prenly_dl.db import repository as repo
-from prenly_dl.db.models import Publication
 
 
 # Titlarna som den fejkade sajten svarar med. Bilagan är inte läsbar, så
@@ -46,14 +45,15 @@ def client_utan_api(temp_env, monkeypatch):
         yield test_client
 
 
-def _skapa_publikation(namn="Tidningen"):
+def _skapa_publikation(namn="Tidningen", enabled=True):
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
-        publication = Publication(
-            title_id=4019, name=namn, slug=repo.unique_slug(session, namn),
-            site="https://a.se", textalk_auth="k", auth="t",
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        publication, _ = repo.upsert_publication(session, site, 4019, namn)
+        publication.enabled = enabled
         session.add(publication)
         session.flush()
         return publication.id, publication.slug
@@ -179,6 +179,17 @@ def test_uppgiftssidan_visar_konsolsnutten(client):
     assert "prenlyKonfig" in response.text
 
 
+def alla_varden(html: str) -> list[str]:
+    """Alla titlar formuläret skickar, även de som inte ska aktiveras."""
+    import html as htmlmod
+    import re
+
+    return [
+        htmlmod.unescape(m)
+        for m in re.findall(r'name="alla" value="([^"]+)"', html)
+    ]
+
+
 def valbara(html: str) -> list[str]:
     """Värdena på de kryssrutor en webbläsare faktiskt skickar.
 
@@ -262,21 +273,39 @@ def test_text_utan_konfiguration_ger_besked(client):
     assert "Hittade ingen konfiguration" in svar.text
 
 
-def test_sparar_bara_de_valda(client):
+def test_alla_titlar_sparas_men_bara_de_valda_aktiveras(client):
+    """Katalogen ska bli komplett; bevakning är ett aktivt val."""
     granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
     varden = valbara(granskning.text)
+    alla = alla_varden(granskning.text)
     assert len(varden) == 2
+    assert len(alla) == 3
 
+    import re
+
+    olasbara = re.findall(r'name="olasbar" value="([^"]+)"', granskning.text)
+    assert olasbara, "titeln utan läsrätt ska skickas med som sådan"
     svar = client.post(
-        "/uppgifter/spara", data={"valda": varden[0]}, follow_redirects=True
+        "/uppgifter/spara",
+        data={"valda": varden[0], "alla": alla, "olasbar": olasbara},
+        follow_redirects=True,
     )
-    assert "1 tillagda" in svar.text
+    assert "1 sajt sparad" in svar.text
+    assert "1 aktiverade" in svar.text
 
     from prenly_dl.db import repository as repo_module
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
-        assert len(repo_module.list_publications(session)) == 1
+        # Uppgifterna skrivs en gång, inte en kopia per titel.
+        assert len(repo_module.list_sites(session)) == 1
+        publikationer = repo_module.list_publications(session)
+        assert len(publikationer) == 3
+        assert sum(1 for p in publikationer if p.enabled) == 1
+        # Titeln utan läsrätt är känd men inte bevakad.
+        utan = next(p for p in publikationer if p.title_id == 9999)
+        assert utan.readable is False
+        assert utan.enabled is False
 
 
 def test_sparar_utan_val_ger_besked(client):
@@ -284,29 +313,31 @@ def test_sparar_utan_val_ger_besked(client):
     assert "Inga publikationer valda" in svar.text
 
 
-def test_omsparning_uppdaterar_uppgifterna(client):
+def test_fornyade_uppgifter_galler_alla_sajtens_titlar(client):
     granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
     client.post(
         "/uppgifter/spara",
-        data={"valda": valbara(granskning.text)},
+        data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
 
     ny_token = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "helt-ny-token"')
     granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny_token})
-    svar = client.post(
+    client.post(
         "/uppgifter/spara",
-        data={"valda": valbara(granskning2.text)},
+        data={"valda": valbara(granskning2.text), "alla": alla_varden(granskning2.text)},
         follow_redirects=True,
     )
-    assert "2 uppdaterade med nya uppgifter" in svar.text
 
     from prenly_dl.db import repository as repo_module
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
+        # En rad att förnya, och den gäller alla titlar under sajten.
+        assert len(repo_module.list_sites(session)) == 1
+        assert repo_module.list_sites(session)[0].auth == "helt-ny-token"
         for publication in repo_module.list_publications(session):
-            assert publication.auth == "helt-ny-token"
+            assert repo_module.credentials_for(publication).auth == "helt-ny-token"
 
 
 ETT_BLOCK = """{
@@ -323,35 +354,37 @@ def test_ett_enskilt_block_fungerar(client_utan_api):
     assert svar.text.count('name="valda"') == 1
 
 
-def test_ett_block_fornyar_befintliga_uppgifter(client_utan_api):
+def test_ett_block_fornyar_hela_sajten(client_utan_api):
     granskning = client_utan_api.post(
         "/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT}
     )
     client_utan_api.post(
         "/uppgifter/spara",
-        data={"valda": valbara(granskning.text)},
+        data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
 
-    # Bara ett block: den publikationen ska kännas igen och uppdateras.
+    # Ett block räcker för att förnya uppgifterna för sajtens alla titlar.
     granskning2 = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
     assert "Finns redan" in granskning2.text
-    svar = client_utan_api.post(
+    client_utan_api.post(
         "/uppgifter/spara",
-        data={"valda": valbara(granskning2.text)},
+        data={"valda": valbara(granskning2.text), "alla": alla_varden(granskning2.text)},
         follow_redirects=True,
     )
-    assert "1 uppdaterade med nya uppgifter" in svar.text
 
     from prenly_dl.db import repository as repo_module
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
-        publikationer = {p.title_id: p for p in repo_module.list_publications(session)}
-        # Bara den i blocket ska ha rörts.
-        assert publikationer[3121].auth == "ny"
-        assert publikationer[3181].auth == "def"
-        assert len(publikationer) == 2
+        assert len(repo_module.list_sites(session)) == 1
+        assert repo_module.list_sites(session)[0].auth == "ny"
+        # Bilagan rördes aldrig i det andra blocket men fick ändå nya
+        # uppgifter, eftersom de hör till sajten.
+        bilagan = next(
+            p for p in repo_module.list_publications(session) if p.title_id == 3181
+        )
+        assert repo_module.credentials_for(bilagan).auth == "ny"
 
 
 def test_granskning_via_htmx_ger_bara_fragmentet(client):

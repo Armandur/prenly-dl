@@ -118,26 +118,26 @@ def load_conf(path: Path) -> dict:
 
 
 def import_conf(session: Session, conf: dict, source_name: str = "") -> Publication:
-    """Skapa eller uppdatera en publikation utifrån en gammal conf-dict."""
+    """Skapa eller uppdatera en publikation utifrån en conf-dict.
+
+    Uppgifterna sparas på sajten, så samma konfiguration för flera titlar
+    skriver dem en gång i stället för en kopia per titel.
+    """
     credentials = conf.get("credentials", {})
     publication_conf = conf.get("publication", {})
-    site = str(credentials.get("site", "")).rstrip("/")
+    site_url = str(credentials.get("site", "")).rstrip("/")
     title_id = int(publication_conf["title"])
 
     name = conf.get("prefix", "").strip(" -") or conf.get("folder", "") or source_name
     name = name or f"Publikation {title_id}"
 
-    existing = repo.find_publication(session, site, title_id)
-    publication = existing or Publication(title_id=title_id, site=site)
-    publication.name = name
-    publication.textalk_auth = credentials.get("textalk-auth", "")
-    publication.auth = credentials.get("auth", "")
-    publication.cdn = credentials.get("cdn", "") or ""
-    publication.prefix = conf.get("prefix", "")
-    publication.folder = conf.get("folder", "")
+    site = repo.upsert_site(session, site_url, credentials)
+    publication, _ = repo.upsert_publication(session, site, title_id, name)
+    publication.prefix = conf.get("prefix", "") or publication.prefix
+    publication.folder = conf.get("folder", "") or publication.folder
     publication.watch_limit = int(publication_conf.get("limit", 1) or 1)
-    if existing is None:
-        publication.slug = repo.unique_slug(session, name)
+    # Den som pekar ut en publikation vill ha den bevakad.
+    publication.enabled = True
     session.add(publication)
     session.flush()
 

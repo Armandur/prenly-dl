@@ -34,53 +34,69 @@ def publication_output_dir(publication: Publication) -> Path:
 
 
 def _record_error(session: Session, publication: Publication, error: Exception) -> None:
-    if isinstance(error, PrenlyAuthError):
-        repo.set_auth_status(session, publication, AuthStatus.AUTH_ERROR, str(error))
-    elif isinstance(error, PrenlySubscriptionError):
-        repo.set_auth_status(
-            session, publication, AuthStatus.SUBSCRIPTION_ERROR, str(error)
-        )
-    else:
-        repo.set_auth_status(session, publication, AuthStatus.ERROR, str(error))
+    """Skriv felet där det hör hemma.
 
-
-def _status_fran_titlar(
-    session: Session, publication: Publication, titles: list[dict]
-) -> AuthStatus:
-    """Sätt auth-status utifrån titellistan.
-
-    Katalog-API:t svarar även när prenumerationen gått ut, så ett lyckat
-    anrop får inte tolkas som OK. Titellistan är det som avgör: saknas
-    publikationen eller är den inte läsbar hämtas inga utgåvor.
+    Ett utgånget token är sajtens problem och gäller alla dess titlar. Att
+    en enskild titel inte ingår i prenumerationen är titelns problem, och
+    säger ingenting om uppgifterna.
     """
-    match = next((t for t in titles if t.get("id") == publication.title_id), None)
-    if match is None:
-        repo.set_auth_status(
-            session, publication, AuthStatus.SUBSCRIPTION_ERROR,
-            f"Publikation {publication.title_id} finns inte på {publication.site}",
-        )
-    elif not match.get("user_readable", True):
-        repo.set_auth_status(
-            session, publication, AuthStatus.SUBSCRIPTION_ERROR,
-            "E-tidningen ingår inte i prenumerationen",
-        )
+    publication.last_error = str(error)
+    session.add(publication)
+    if isinstance(error, PrenlySubscriptionError):
+        publication.readable = False
+        return
+    if isinstance(error, PrenlyAuthError):
+        repo.set_site_status(session, publication.site, AuthStatus.AUTH_ERROR, str(error))
     else:
-        repo.set_auth_status(session, publication, AuthStatus.OK, None)
-    return AuthStatus(publication.auth_status)
+        repo.set_site_status(session, publication.site, AuthStatus.ERROR, str(error))
 
 
-def verify_credentials(session: Session, publication: Publication) -> AuthStatus:
-    """Kontrollera uppgifterna mot API:t och spara resultatet."""
+def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
+    """Spegla sajtens titellista till publikationer. Returnerar (nya, totalt).
+
+    Varje titel sajten exponerar får en rad, så katalogen går att bläddra i
+    utan API-anrop och visar vad kontot hade tillgång till även när
+    uppgifterna slutat gälla.
+    """
+    nya = 0
+    for titel in titles:
+        title_id = titel.get("id")
+        if title_id is None:
+            continue
+        _, created = repo.upsert_publication(
+            session,
+            site,
+            int(title_id),
+            str(titel.get("name") or f"Publikation {title_id}"),
+            readable=bool(titel.get("user_readable", True)),
+        )
+        if created:
+            nya += 1
+    repo.set_site_status(session, site, AuthStatus.OK, None)
+    return nya, len(titles)
+
+
+def verify_site(session: Session, site) -> AuthStatus:
+    """Kontrollera sajtens uppgifter och uppdatera dess titlar."""
     http = build_session()
-    creds = repo.credentials_for(publication)
+    creds = repo.credentials_for_site(site)
     try:
         token = get_context_token(http, creds)
         titles = get_titles(http, creds, token)
+    except PrenlyAuthError as error:
+        repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+        return AuthStatus(site.auth_status)
     except PrenlyError as error:
-        _record_error(session, publication, error)
-        return AuthStatus(publication.auth_status)
+        repo.set_site_status(session, site, AuthStatus.ERROR, str(error))
+        return AuthStatus(site.auth_status)
 
-    return _status_fran_titlar(session, publication, titles)
+    synka_titlar(session, site, titles)
+    return AuthStatus(site.auth_status)
+
+
+def verify_credentials(session: Session, publication: Publication) -> AuthStatus:
+    """Kontrollera sajtens uppgifter utifrån en av dess publikationer."""
+    return verify_site(session, publication.site)
 
 
 def discover_titles(creds) -> list[dict]:
@@ -115,8 +131,11 @@ def poll_publication(
                 queued += 1
 
     publication.catalogue_offset = max(publication.catalogue_offset + new_issues, len(entries))
+    publication.last_error = None
     session.add(publication)
-    _status_fran_titlar(session, publication, titles)
+    # Katalogen svarar även när prenumerationen gått ut, så titellistan är
+    # det som avgör om utgåvorna faktiskt går att hämta.
+    synka_titlar(session, publication.site, titles)
     logger.info(
         "%s: %d utgåvor i katalogen, %d nya, %d köade",
         publication.name, len(entries), new_issues, queued,
@@ -203,7 +222,7 @@ def run_poll_job(session: Session, job: Job) -> str:
         publication = repo.get_publication(session, job.publication_id)
         publications = [publication] if publication else []
     else:
-        publications = [p for p in repo.list_publications(session) if p.enabled]
+        publications = repo.list_publications(session, enabled_only=True)
 
     totals = {"found": 0, "new": 0, "queued": 0}
     failures: list[str] = []
@@ -302,7 +321,12 @@ def run_download_job(session: Session, job: Job) -> str:
         issue.page_count = result.page_count
         issue.downloaded_at = utcnow()
     session.add(issue)
-    repo.set_auth_status(session, publication, AuthStatus.OK, None)
+    # En lyckad nedladdning bevisar att både uppgifterna och läsrätten
+    # fungerar.
+    publication.readable = True
+    publication.last_error = None
+    session.add(publication)
+    repo.set_site_status(session, publication.site, AuthStatus.OK, None)
 
     if result.skipped:
         return f"{result.path.name} fanns redan"

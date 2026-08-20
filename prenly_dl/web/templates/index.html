@@ -11,7 +11,8 @@
 {% include "stats_cards.html" %}
 
 <div class="card-actions" style="margin-bottom:1rem">
-  <a href="/publications/new" role="button">Lägg till publikation</a>
+  <a href="/katalog" role="button">Katalog</a>
+  <a href="/publications/new" role="button" class="secondary">Lägg till publikation</a>
   <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
 </div>
 
@@ -23,7 +24,10 @@
 {% endif %}
 
 {% if not rows %}
-  <article>Inga publikationer ännu. <a href="/publications/new">Lägg till den första</a>.</article>
+  <article>
+    Inga publikationer bevakas. <a href="/katalog">Aktivera dem i katalogen</a>,
+    eller <a href="/uppgifter">hämta inloggningsuppgifter</a> om katalogen är tom.
+  </article>
 {% endif %}
 
 <div class="grid-cards">

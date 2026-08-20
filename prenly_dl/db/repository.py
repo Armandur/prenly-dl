@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ..api import Credentials
 from .models import (
     AuthStatus,
+    Site,
     Issue,
     IssueStatus,
     Job,
@@ -49,12 +50,74 @@ def unique_slug(session: Session, base: str, exclude_id: int | None = None) -> s
 
 
 # --------------------------------------------------------------------------
+# Sajter
+# --------------------------------------------------------------------------
+
+
+def list_sites(session: Session) -> list[Site]:
+    return list(session.execute(select(Site).order_by(Site.url)).scalars())
+
+
+def get_site(session: Session, site_id: int) -> Site | None:
+    return session.get(Site, site_id)
+
+
+def find_site(session: Session, url: str) -> Site | None:
+    return session.execute(
+        select(Site).where(Site.url == url.rstrip("/"))
+    ).scalar_one_or_none()
+
+
+def upsert_site(session: Session, url: str, credentials: dict) -> Site:
+    """Skapa eller uppdatera en sajt med dess inloggningsuppgifter.
+
+    Uppgifterna hör till sajten, så en förnyelse här gäller omedelbart för
+    alla titlar sajten exponerar.
+    """
+    url = url.rstrip("/")
+    site = find_site(session, url)
+    if site is None:
+        site = Site(url=url)
+    site.textalk_auth = credentials.get("textalk-auth", credentials.get("textalk_auth", ""))
+    site.auth = credentials.get("auth", "")
+    site.cdn = credentials.get("cdn", "") or ""
+    session.add(site)
+    session.flush()
+    return site
+
+
+def credentials_for_site(site: Site) -> Credentials:
+    return Credentials(
+        site=site.url,
+        textalk_auth=site.textalk_auth,
+        auth=site.auth,
+        cdn=site.cdn or "",
+    )
+
+
+def set_site_status(
+    session: Session, site: Site, status: AuthStatus, message: str | None = None
+) -> None:
+    site.auth_status = status.value
+    site.auth_message = message
+    site.auth_checked_at = utcnow()
+    session.add(site)
+
+
+# --------------------------------------------------------------------------
 # Publikationer
 # --------------------------------------------------------------------------
 
 
-def list_publications(session: Session) -> list[Publication]:
-    return list(session.execute(select(Publication).order_by(Publication.name)).scalars())
+def list_publications(
+    session: Session, enabled_only: bool = False, site_id: int | None = None
+) -> list[Publication]:
+    stmt = select(Publication).order_by(Publication.name)
+    if enabled_only:
+        stmt = stmt.where(Publication.enabled.is_(True))
+    if site_id is not None:
+        stmt = stmt.where(Publication.site_id == site_id)
+    return list(session.execute(stmt).scalars())
 
 
 def get_publication(session: Session, publication_id: int) -> Publication | None:
@@ -68,32 +131,45 @@ def get_publication_by_slug(session: Session, slug: str) -> Publication | None:
 
 
 def find_publication(session: Session, site: str, title_id: int) -> Publication | None:
-    return session.execute(
-        select(Publication).where(
-            Publication.site == site.rstrip("/"), Publication.title_id == title_id
-        )
+    """Slå upp en publikation på sajtens URL och titel-ID."""
+    row = session.execute(
+        select(Publication)
+        .join(Site)
+        .where(Site.url == site.rstrip("/"), Publication.title_id == title_id)
     ).scalar_one_or_none()
+    return row
 
 
 def credentials_for(publication: Publication) -> Credentials:
-    return Credentials(
-        site=publication.site,
-        textalk_auth=publication.textalk_auth,
-        auth=publication.auth,
-        cdn=publication.cdn or "",
-    )
+    return credentials_for_site(publication.site)
 
 
-def set_auth_status(
-    session: Session,
-    publication: Publication,
-    status: AuthStatus,
-    message: str | None = None,
-) -> None:
-    publication.auth_status = status.value
-    publication.auth_message = message
-    publication.auth_checked_at = utcnow()
+def upsert_publication(
+    session: Session, site: Site, title_id: int, namn: str, readable: bool = True,
+) -> tuple[Publication, bool]:
+    """Skapa eller uppdatera en titel under en sajt. Returnerar (rad, ny)."""
+    publication = session.execute(
+        select(Publication).where(
+            Publication.site_id == site.id, Publication.title_id == title_id
+        )
+    ).scalar_one_or_none()
+
+    created = publication is None
+    if publication is None:
+        publication = Publication(
+            site_id=site.id,
+            title_id=title_id,
+            name=namn,
+            slug=unique_slug(session, namn),
+            prefix=f"{namn} - ",
+            folder=namn,
+        )
+    elif namn and publication.name != namn:
+        publication.name = namn
+    publication.readable = readable
     session.add(publication)
+    session.flush()
+    return publication, created
 
 
 # --------------------------------------------------------------------------
@@ -325,6 +401,7 @@ def dashboard_stats(session: Session) -> dict[str, int]:
     aktiva = session.execute(
         select(func.count(Publication.id)).where(Publication.enabled.is_(True))
     ).scalar_one()
+    sajter = session.execute(select(func.count(Site.id))).scalar_one()
     utgavor = session.execute(select(func.count(Issue.id))).scalar_one()
     hamtade = session.execute(
         select(func.count(Issue.id)).where(Issue.status == IssueStatus.DONE.value)
@@ -333,6 +410,7 @@ def dashboard_stats(session: Session) -> dict[str, int]:
     return {
         "publikationer": publikationer,
         "aktiva": aktiva,
+        "sajter": sajter,
         "utgavor": utgavor,
         "hamtade": hamtade,
         "koade": counts.get(JobStatus.QUEUED.value, 0),

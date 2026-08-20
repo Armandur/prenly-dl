@@ -19,7 +19,7 @@ from .db.session import get_session, init_db
 from .downloader import download_issue
 from .errors import PrenlyError
 from .importer import import_directory, load_conf
-from .services import execute_job, poll_publication, verify_credentials
+from .services import execute_job, poll_publication, verify_site
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ def cmd_poll(args: argparse.Namespace) -> int:
     """Kör katalogkontroll och eventuella nedladdningar direkt."""
     init_db()
     with get_session() as session:
-        publications = [p for p in repo.list_publications(session) if p.enabled]
+        publications = repo.list_publications(session, enabled_only=True)
         if args.publication:
             publications = [p for p in publications if p.slug == args.publication]
         for publication in publications:
@@ -145,12 +145,17 @@ def cmd_poll(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
+    """Testa uppgifterna en gång per sajt, inte en gång per titel."""
     init_db()
     with get_session() as session:
-        for publication in repo.list_publications(session):
-            status = verify_credentials(session, publication)
-            note = f" - {publication.auth_message}" if publication.auth_message else ""
-            print(f"{publication.name}: {status.value}{note}")
+        for site in repo.list_sites(session):
+            status = verify_site(session, site)
+            note = f" - {site.auth_message}" if site.auth_message else ""
+            print(f"{site.url}: {status.value}{note}")
+            for publication in repo.list_publications(session, site_id=site.id):
+                lasrätt = "läsbar" if publication.readable else "ingen läsrätt"
+                aktiv = "aktiv" if publication.enabled else "inaktiv"
+                print(f"  {publication.title_id:>6} {publication.name} ({lasrätt}, {aktiv})")
     return 0
 
 

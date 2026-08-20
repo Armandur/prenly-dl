@@ -62,43 +62,78 @@ class JobType(str, Enum):
     CATALOGUE = "catalogue"
 
 
-class Publication(Base):
-    __tablename__ = "publications"
+class Site(Base):
+    """En tidningssajt och dess inloggningsuppgifter.
+
+    Uppgifterna hör till sajten, inte till en enskild publikation: ett
+    förnyat token gäller omedelbart för alla titlar sajten exponerar.
+    """
+
+    __tablename__ = "sites"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    title_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    url: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), default="")
 
-    # Inloggningsuppgifter, olika per sajt och med egen livslängd.
-    site: Mapped[str] = mapped_column(String(255), nullable=False)
     textalk_auth: Mapped[str] = mapped_column(Text, nullable=False)
     auth: Mapped[str] = mapped_column(Text, nullable=False)
     cdn: Mapped[str] = mapped_column(String(255), default="")
 
+    # Gäller uppgifterna? Om en enskild titel går att läsa är en annan
+    # fråga, och bor på publikationen.
+    auth_status: Mapped[str] = mapped_column(String(32), default=AuthStatus.UNKNOWN.value)
+    auth_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    publications: Mapped[list["Publication"]] = relationship(
+        back_populates="site", cascade="all, delete-orphan"
+    )
+
+
+class Publication(Base):
+    __tablename__ = "publications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+    )
+    title_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+
+    # Kan kontot läsa titeln? Sätts från sajtens titellista.
+    readable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Aktiverad = ingår i den schemalagda katalogkontrollen och nya utgåvor
+    # köas för nedladdning. Inaktiva titlar går ändå att bläddra i och hämta
+    # enstaka utgåvor ur.
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
     prefix: Mapped[str] = mapped_column(String(255), default="")
     folder: Mapped[str] = mapped_column(String(255), default="")
     watch_limit: Mapped[int] = mapped_column(Integer, default=1)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Hur många katalogposter som hämtats, och om katalogen tagit slut.
     # Äldre utgåvor ändras inte, så en hämtad sida behöver aldrig hämtas om.
     catalogue_offset: Mapped[int] = mapped_column(Integer, default=0)
     catalogue_complete: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    auth_status: Mapped[str] = mapped_column(String(32), default=AuthStatus.UNKNOWN.value)
-    auth_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    auth_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
+    # Uppgifterna behövs varje gång publikationen används, och en lazy
+    # relation dör med sessionen som hämtade raden.
+    site: Mapped[Site] = relationship(back_populates="publications", lazy="joined")
     issues: Mapped[list["Issue"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (UniqueConstraint("site", "title_id", name="uq_site_title"),)
+    __table_args__ = (UniqueConstraint("site_id", "title_id", name="uq_site_title"),)
 
 
 class Issue(Base):

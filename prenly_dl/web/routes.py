@@ -33,6 +33,7 @@ from ..scheduler import (
 )
 from ..services import (
     discover_titles,
+    verify_site,
     publication_output_dir,
     ensure_catalogue_depth,
     poll_publication,
@@ -107,7 +108,9 @@ def logout(request: Request):
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request):
     with get_session() as session:
-        publications = repo.list_publications(session)
+        # Översikten visar det man valt att bevaka; hela katalogen finns
+        # under /katalog.
+        publications = repo.list_publications(session, enabled_only=True)
         stats = repo.dashboard_stats(session)
         jobs = repo.list_jobs(session, limit=10)
         issues = repo.list_issues(session, limit=10)
@@ -137,6 +140,72 @@ def index(request: Request):
 # --------------------------------------------------------------------------
 # Publikationer
 # --------------------------------------------------------------------------
+
+
+@router.get("/katalog", response_class=HTMLResponse)
+def catalogue(request: Request):
+    """Alla kända titlar per sajt, med växel för bevakning.
+
+    Läses ur databasen: katalogen visar vad kontot hade tillgång till även
+    när uppgifterna slutat gälla.
+    """
+    with get_session() as session:
+        sajter = []
+        for site in repo.list_sites(session):
+            publikationer = repo.list_publications(session, site_id=site.id)
+            sajter.append({
+                "site": site,
+                # Antalet utgåvor räknas i databasen: att ladda relationen
+                # för att mäta dess längd hämtar tusentals rader i onödan.
+                "rader": [
+                    {"pub": p, "utgavor": repo.count_issues(session, p.id)}
+                    for p in publikationer
+                ],
+                "antal": len(publikationer),
+                "aktiva": sum(1 for p in publikationer if p.enabled),
+                "lasbara": sum(1 for p in publikationer if p.readable),
+            })
+    return render(request, "catalogue.html", sajter=sajter)
+
+
+@router.post("/katalog/{publication_id}/toggle")
+def toggle_publication(request: Request, publication_id: int, aktiv: str = Form("")):
+    """Slå på eller av bevakning av en titel."""
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/katalog")
+        publication.enabled = aktiv == "on"
+        session.add(publication)
+        namn, pa = publication.name, publication.enabled
+    flash(request, f"{namn} {'bevakas nu' if pa else 'bevakas inte längre'}", "success")
+    return back("/katalog")
+
+
+@router.post("/sites/{site_id}/verify")
+def verify_site_route(request: Request, site_id: int):
+    """Testa en sajts uppgifter och uppdatera dess titellista."""
+    with get_session() as session:
+        site = repo.get_site(session, site_id)
+        if site is None:
+            return back("/katalog")
+        status = verify_site(session, site)
+        url, message = site.url, site.auth_message
+    if status is AuthStatus.OK:
+        flash(request, f"Uppgifterna för {url} fungerar", "success")
+    else:
+        flash(request, f"{url}: {message}", "error")
+    return back("/katalog")
+
+
+@router.post("/sites/{site_id}/delete")
+def delete_site(request: Request, site_id: int):
+    with get_session() as session:
+        site = repo.get_site(session, site_id)
+        if site is not None:
+            session.delete(site)
+    flash(request, "Sajten och dess publikationer togs bort", "success")
+    return back("/katalog")
 
 
 @router.get("/covers/{publication_id}/{checksum}.jpg")
@@ -323,42 +392,73 @@ def _fynd_fran_konfigurationer(konfigurationer: list[dict]) -> tuple[list, str |
 
 @router.post("/uppgifter/spara")
 async def save_pasted(request: Request):
-    """Spara de publikationer användaren kryssat i."""
+    """Spara sajtens uppgifter och aktivera de titlar som kryssats i.
+
+    Uppgifterna skrivs en gång per sajt. Alla titlar sajten exponerade när
+    listan hämtades sparas som kända, så katalogen är komplett - de som
+    kryssats i aktiveras för bevakning.
+    """
     form = await request.form()
     valda = form.getlist("valda")
+    alla = form.getlist("alla") or valda
     if not valda:
         flash(request, "Inga publikationer valda", "error")
         return back("/uppgifter")
 
-    nya, uppdaterade, trasiga = 0, 0, 0
-    with get_session() as session:
-        for rad in valda:
+    def _tolka(rader):
+        for rad in rader:
             try:
-                conf = json.loads(rad)
+                yield json.loads(rad)
             except ValueError:
-                trasiga += 1
                 continue
-            site = str(conf.get("credentials", {}).get("site", "")).rstrip("/")
-            fanns = repo.find_publication(session, site, int(conf["publication"]["title"]))
-            try:
-                import_conf(session, conf)
-            except (KeyError, ValueError):
-                trasiga += 1
-                continue
-            if fanns:
-                uppdaterade += 1
-            else:
-                nya += 1
 
-    delar = []
+    aktiverade_nycklar = {
+        (str(c["credentials"].get("site", "")).rstrip("/"), int(c["publication"]["title"]))
+        for c in _tolka(valda)
+        if c.get("credentials") and c.get("publication")
+    }
+    # Läsrätten hör till titeln och följer inte med konfigurationen, så den
+    # skickas som en egen lista över det kontot inte kommer åt.
+    olasbara = set()
+    for rad in form.getlist("olasbar"):
+        url, _, title = rad.rpartition("|")
+        if title.isdigit():
+            olasbara.add((url, int(title)))
+
+    nya, aktiverade, sajter = 0, 0, set()
+    with get_session() as session:
+        for conf in _tolka(alla):
+            credentials = conf.get("credentials") or {}
+            url = str(credentials.get("site", "")).rstrip("/")
+            try:
+                title_id = int(conf["publication"]["title"])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            site = repo.upsert_site(session, url, credentials)
+            sajter.add(url)
+            namn = (
+                conf.get("folder") or conf.get("prefix", "").strip(" -")
+                or f"Publikation {title_id}"
+            )
+            publication, created = repo.upsert_publication(
+                session, site, title_id, namn,
+                readable=(url, title_id) not in olasbara,
+            )
+            if created:
+                nya += 1
+            if (url, title_id) in aktiverade_nycklar and not publication.enabled:
+                publication.enabled = True
+                aktiverade += 1
+            session.add(publication)
+
+    delar = [f"{len(sajter)} {'sajt' if len(sajter) == 1 else 'sajter'} sparad"]
     if nya:
-        delar.append(f"{nya} tillagda")
-    if uppdaterade:
-        delar.append(f"{uppdaterade} uppdaterade med nya uppgifter")
-    if trasiga:
-        delar.append(f"{trasiga} kunde inte tolkas")
-    flash(request, ", ".join(delar).capitalize(), "error" if trasiga else "success")
-    return back("/")
+        delar.append(f"{nya} nya titlar i katalogen")
+    if aktiverade:
+        delar.append(f"{aktiverade} aktiverade")
+    flash(request, ", ".join(delar).capitalize(), "success")
+    return back("/katalog")
 
 
 @router.post("/publications")
@@ -494,25 +594,18 @@ def edit_publication(
     request: Request,
     publication_id: int,
     name: str = Form(""),
-    site: str = Form(""),
-    textalk_auth: str = Form(""),
-    auth: str = Form(""),
-    cdn: str = Form(""),
     prefix: str = Form(""),
     folder: str = Form(""),
     watch_limit: int = Form(1),
     enabled: str = Form(""),
 ):
+    """Publikationens egna inställningar. Uppgifterna bor på sajten."""
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is None:
             flash(request, "Publikationen finns inte", "error")
             return back("/")
         publication.name = name.strip() or publication.name
-        publication.site = site.rstrip("/") or publication.site
-        publication.textalk_auth = textalk_auth
-        publication.auth = auth
-        publication.cdn = cdn
         publication.prefix = prefix
         publication.folder = folder
         publication.watch_limit = max(1, watch_limit)

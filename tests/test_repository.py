@@ -1,14 +1,13 @@
 from prenly_dl.db import repository as repo
-from prenly_dl.db.models import IssueStatus, JobStatus, Publication
+from prenly_dl.db.models import IssueStatus, JobStatus
 
 
-def _publikation(session, namn="Tidningen"):
-    publication = Publication(
-        title_id=1, name=namn, slug=repo.unique_slug(session, namn),
-        site="https://a.se", textalk_auth="k", auth="t",
+def _publikation(session, namn="Tidningen", title_id=1):
+    """Publikationen ligger under en sajt som bär uppgifterna."""
+    site = repo.upsert_site(
+        session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
     )
-    session.add(publication)
-    session.flush()
+    publication, _ = repo.upsert_publication(session, site, title_id, namn)
     return publication
 
 
@@ -63,3 +62,19 @@ def test_unique_slug_undviker_krock(db):
     with db() as session:
         _publikation(session, "Tidningen")
         assert repo.unique_slug(session, "Tidningen") == "tidningen-2"
+
+
+def test_uppgifterna_delas_av_sajtens_titlar(db):
+    """En förnyelse på sajten gäller alla dess titlar."""
+    with db() as session:
+        forsta = _publikation(session, "Tidningen", title_id=1)
+        andra = _publikation(session, "Bilagan", title_id=2)
+        assert forsta.site_id == andra.site_id
+        assert len(repo.list_sites(session)) == 1
+
+        repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "ny-klient", "auth": "ny-token"}
+        )
+        for publication in repo.list_publications(session):
+            assert publication.site.auth == "ny-token"
+            assert repo.credentials_for(publication).auth == "ny-token"

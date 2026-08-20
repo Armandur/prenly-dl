@@ -1,17 +1,15 @@
 
 from prenly_dl import downloader, services
 from prenly_dl.db import repository as repo
-from prenly_dl.db.models import IssueStatus, Job, JobStatus, Publication
+from prenly_dl.db.models import IssueStatus, Job, JobStatus
 from prenly_dl.errors import PrenlyAuthError, PrenlyError
 
 
 def _publikation(session):
-    publication = Publication(
-        title_id=1, name="Tidningen", slug="tidningen", site="https://a.se",
-        textalk_auth="k", auth="t",
+    site = repo.upsert_site(
+        session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
     )
-    session.add(publication)
-    session.flush()
+    publication, _ = repo.upsert_publication(session, site, 1, "Tidningen")
     return publication
 
 
@@ -44,7 +42,7 @@ def test_jobb_som_misslyckas_lamnar_utgavan_i_fel(db, monkeypatch):
         assert job.status == JobStatus.ERROR.value
 
 
-def test_authfel_markerar_publikationen(db, monkeypatch):
+def test_authfel_markerar_sajten(db, monkeypatch):
     _koa_nedladdning(db)
 
     def _utloggad(*args, **kwargs):
@@ -57,9 +55,11 @@ def test_authfel_markerar_publikationen(db, monkeypatch):
         services.execute_job(session, job)
 
     with db() as session:
-        publication = repo.list_publications(session)[0]
-        assert publication.auth_status == "auth_error"
-        assert publication.auth_message == "Inte autentiserad."
+        # Ett utgånget token är sajtens problem, inte titelns.
+        site = repo.list_sites(session)[0]
+        assert site.auth_status == "auth_error"
+        assert site.auth_message == "Inte autentiserad."
+        assert repo.list_publications(session)[0].readable is True
 
 
 def test_force_foljer_med_till_nedladdningen(db, monkeypatch):

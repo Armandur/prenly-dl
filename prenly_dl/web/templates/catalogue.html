@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Katalog - prenly-dl{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>Katalog</h1>
+  <p class="muted">
+    Allt dina inloggningsuppgifter ger tillgång till, en sajt i taget.
+    Aktivera en titel för att bevaka den: nya utgåvor upptäcks då av den
+    schemalagda katalogkontrollen och köas för nedladdning.
+  </p>
+</hgroup>
+
+{% if not sajter %}
+  <article>
+    Inga sajter ännu. <a href="/uppgifter">Hämta inloggningsuppgifter</a> så
+    byggs katalogen av det kontot har tillgång till.
+  </article>
+{% endif %}
+
+{% for post in sajter %}
+  {% set site = post.site %}
+  <article>
+    <header class="issues-toolbar">
+      <div>
+        <strong class="site-url">{{ site.url }}</strong>
+        <span class="badge {{ site.auth_status|status_class }}">{{ status_labels.get(site.auth_status, site.auth_status) }}</span>
+        <br>
+        <span class="muted">
+          {{ post.antal }} titlar · {{ post.lasbara }} läsbara ·
+          {{ post.aktiva }} bevakas
+          {% if site.auth_checked_at %}· kontrollerad {{ site.auth_checked_at|local_time }}{% endif %}
+        </span>
+        {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}
+      </div>
+      <div class="card-actions">
+        <form method="post" action="/sites/{{ site.id }}/verify">
+          <button class="secondary outline">Testa uppgifter</button>
+        </form>
+      </div>
+    </header>
+
+    <div class="scroll-x">
+    <table>
+      <thead>
+        <tr><th>Bevakas</th><th>Publikation</th><th>Titel-ID</th><th>Utgåvor</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+      {% for rad in post.rader %}
+        {% set pub = rad.pub %}
+        <tr {% if not pub.readable %}class="rad-otillganglig"{% endif %}>
+          <td>
+            <form method="post" action="/katalog/{{ pub.id }}/toggle" class="inline">
+              <input type="hidden" name="aktiv" value="{{ '' if pub.enabled else 'on' }}">
+              <button class="secondary outline"
+                      {% if not pub.readable and not pub.enabled %}disabled{% endif %}>
+                {{ "På" if pub.enabled else "Av" }}
+              </button>
+            </form>
+          </td>
+          <td><a href="/publications/{{ pub.slug }}">{{ pub.name }}</a></td>
+          <td>{{ pub.title_id }}</td>
+          <td class="muted">{{ rad.utgavor or "-" }}</td>
+          <td>
+            {% if not pub.readable %}
+              <span class="badge warn">Ingen läsrätt</span>
+            {% elif pub.enabled %}
+              <span class="badge ok">Bevakas</span>
+            {% else %}
+              <span class="badge neutral">Inaktiv</span>
+            {% endif %}
+            {% if pub.last_error %}<br><span class="muted">{{ pub.last_error }}</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+
+    <details>
+      <summary class="muted">Ta bort sajten</summary>
+      <p class="muted">
+        Tar bort {{ site.url }} med alla dess titlar, utgåvor och jobbhistorik.
+        Nedladdade PDF:er ligger kvar på disk.
+      </p>
+      <form method="post" action="/sites/{{ site.id }}/delete"
+            data-confirm="Ta bort {{ site.url }} och alla dess publikationer?">
+        <button class="secondary">Ta bort sajten</button>
+      </form>
+    </details>
+  </article>
+{% endfor %}
+{% endblock %}

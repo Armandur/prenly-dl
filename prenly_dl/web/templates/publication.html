@@ -13,17 +13,30 @@
   <hgroup>
     <h1>{{ publication.name }}</h1>
     <p>
-      <span class="badge {{ publication.auth_status|status_class }}">{{ status_labels.get(publication.auth_status, publication.auth_status) }}</span>
-      {% if publication.auth_checked_at %}kontrollerad {{ publication.auth_checked_at|local_time }}{% endif %}
-      {% if publication.auth_message %}<br><span class="muted">{{ publication.auth_message }}</span>{% endif %}
-      <br><span class="muted">Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste</span>
+      {% if not publication.readable %}
+        <span class="badge warn">Ingen läsrätt</span>
+      {% elif publication.enabled %}
+        <span class="badge ok">Bevakas</span>
+      {% else %}
+        <span class="badge neutral">Inaktiv</span>
+      {% endif %}
+      <span class="badge {{ publication.site.auth_status|status_class }}">
+        Uppgifter: {{ status_labels.get(publication.site.auth_status, publication.site.auth_status) }}
+      </span>
+      {% if publication.site.auth_checked_at %}kontrollerad {{ publication.site.auth_checked_at|local_time }}{% endif %}
+      {% if publication.site.auth_message %}<br><span class="muted">{{ publication.site.auth_message }}</span>{% endif %}
+      {% if publication.last_error %}<br><span class="muted">{{ publication.last_error }}</span>{% endif %}
+      <br><span class="muted">
+        Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste ·
+        <a href="/katalog">{{ publication.site.url }}</a>
+      </span>
     </p>
   </hgroup>
 </div>
 
 <div class="card-actions" style="margin-bottom:1rem">
   <form method="post" action="/publications/{{ publication.id }}/poll"><button>Kontrollera katalogen nu</button></form>
-  <form method="post" action="/publications/{{ publication.id }}/verify"><button class="secondary">Testa uppgifter</button></form>
+  <form method="post" action="/sites/{{ publication.site_id }}/verify"><button class="secondary">Testa uppgifter</button></form>
 </div>
 
 {% include "issues_section.html" %}
@@ -32,28 +45,21 @@
 <form method="post" action="/publications/{{ publication.id }}/edit">
   <div class="grid">
     <label>Namn<input name="name" value="{{ publication.name }}" required></label>
-    <label>Sajt<input name="site" value="{{ publication.site }}" required></label>
+    <label>Antal senaste utgåvor att bevaka<input type="number" name="watch_limit" min="1" value="{{ publication.watch_limit }}"></label>
   </div>
   <div class="grid">
     <label>Prefix på filnamn<input name="prefix" value="{{ publication.prefix }}"></label>
     <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
   </div>
-  <div class="grid">
-    <label>Antal senaste utgåvor att bevaka<input type="number" name="watch_limit" min="1" value="{{ publication.watch_limit }}"></label>
-    <label>CDN (tomt = standard)<input name="cdn" value="{{ publication.cdn }}"></label>
-  </div>
-  <label>X-Textalk-Content-Client-Authorize<input name="textalk_auth" value="{{ publication.textalk_auth }}"></label>
-  <label>Sessionstoken (utan "Bearer ")<input name="auth" value="{{ publication.auth }}"></label>
   <p class="muted">
-    Tokens har begränsad livslängd. Blir statusen "Utloggad":
-    <a href="/uppgifter">hämta nya med konsolsnutten</a> och klistra in dem här.
-    Blir den "Ingen prenumeration" räcker inte nya uppgifter - men snutten
-    visar vilka titlar kontot faktiskt kan läsa, och om tidningen finns under
-    ett annat publikations-ID.
+    Inloggningsuppgifterna hör till sajten <a href="/katalog">{{ publication.site.url }}</a>
+    och delas av alla dess titlar. Blir statusen "Utloggad":
+    <a href="/uppgifter">hämta nya med konsolsnutten</a> och klistra in dem en
+    gång, så gäller de här med.
   </p>
   <label>
     <input type="checkbox" name="enabled" {% if publication.enabled %}checked{% endif %}>
-    Aktiv (ingår i schemalagd katalogkontroll)
+    Bevaka (ingår i schemalagd katalogkontroll, nya utgåvor köas)
   </label>
   <button type="submit">Spara</button>
 </form>
@@ -78,7 +84,7 @@
 </div>
 
 <details style="margin-top:2rem">
-  <summary>Ta bort publikationen</summary>
+  <summary class="muted">Ta bort publikationen ur katalogen</summary>
   <form method="post" action="/publications/{{ publication.id }}/delete"
         data-confirm="Ta bort {{ publication.name }} och all dess historik?">
     <button class="secondary">Ta bort {{ publication.name }}</button>

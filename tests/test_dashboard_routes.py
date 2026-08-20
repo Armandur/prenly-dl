@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from prenly_dl.covers import cover_cache_root
 from prenly_dl.db import repository as repo
-from prenly_dl.db.models import Publication
 from prenly_dl.web.library import resolve_file, scan_library
 
 
@@ -21,10 +20,11 @@ def _publikation():
     from prenly_dl.db.session import get_session
 
     with get_session() as session:
-        publication = Publication(
-            title_id=4019, name="Tidningen", slug="tidningen", site="https://a.se",
-            textalk_auth="k", auth="t",
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        publication.enabled = True
         session.add(publication)
         session.flush()
         return publication.id
@@ -105,8 +105,27 @@ def test_statistikkorten(client):
     _publikation()
     response = client.get("/stats/cards")
     assert response.status_code == 200
-    assert "Publikationer" in response.text
+    assert "Bevakas" in response.text
+    assert "av 1 i katalogen" in response.text
+    assert "1 sajt" in response.text
     assert "stats-cards" in response.text
+
+
+def test_oversikten_visar_bara_bevakade(client):
+    from prenly_dl.db.session import get_session
+
+    publication_id = _publikation()
+    with get_session() as session:
+        site = repo.get_site(session, repo.get_publication(session, publication_id).site_id)
+        inaktiv, _ = repo.upsert_publication(session, site, 5000, "Inte bevakad")
+        inaktiv.enabled = False
+        session.add(inaktiv)
+
+    svar = client.get("/")
+    assert "Tidningen" in svar.text
+    assert "Inte bevakad" not in svar.text
+    # Men den finns i katalogen.
+    assert "Inte bevakad" in client.get("/katalog").text
 
 
 def test_omslag_for_okand_publikation_ger_404(client):
@@ -144,10 +163,12 @@ def test_kortet_visar_storlek_pa_disk(temp_env, client):
     from prenly_dl.web.library import folder_usage
 
     with get_session() as session:
-        publication = Publication(
-            title_id=4019, name="Tidningen", slug="tidningen", site="https://a.se",
-            textalk_auth="k", auth="t", folder="Tidningen",
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        publication.folder = "Tidningen"
+        publication.enabled = True
         session.add(publication)
 
     mapp = temp_env / "output" / "Tidningen"

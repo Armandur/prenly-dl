@@ -5,17 +5,17 @@ from fastapi.testclient import TestClient
 
 from prenly_dl import services
 from prenly_dl.db import repository as repo
-from prenly_dl.db.models import Publication
 from prenly_dl.errors import PrenlyAuthError
 
 
 @pytest.fixture
 def publikation(db):
     with db() as session:
-        publication = Publication(
-            title_id=4019, name="Tidningen", slug="tidningen", site="https://a.se",
-            textalk_auth="k", auth="t",
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
         )
+        publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        publication.enabled = True
         session.add(publication)
         session.flush()
         return publication.id
