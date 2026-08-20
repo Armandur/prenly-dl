@@ -127,14 +127,43 @@ def test_forhandsgranska_knappen_serverar_pdf_utan_nedladdningsjobb(
     monkeypatch.setattr(routes_module, "ensure_catalogue_depth", lambda *args: 0)
 
     page = client.get(f"/publications/{slug}")
-    assert f'action="/issues/{issue_id}/preview"' in page.text
-    response = client.post(f"/issues/{issue_id}/preview")
+    assert f'data-preview="/issues/{issue_id}/preview"' in page.text
 
+    # Bygget är skilt från öppnandet: POST bygger och svarar med adressen,
+    # så att knappen kan visa en spinner och öppna fliken först när filen
+    # finns.
+    byggd = client.post(f"/issues/{issue_id}/preview")
+    assert byggd.status_code == 200
+    assert byggd.json() == {"url": f"/issues/{issue_id}/preview"}
+
+    response = client.get(f"/issues/{issue_id}/preview")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"].startswith("inline;")
     assert response.content == b"%PDF-1.4\n%%EOF"
     assert client.get("/api/jobs").json() == []
+
+
+def test_forhandsgranskning_som_misslyckas_ger_besked(client, monkeypatch):
+    import prenly_dl.web.routes as routes_module
+    from prenly_dl.db.session import get_session
+    from prenly_dl.errors import PrenlyAuthError
+
+    publication_id, slug = _skapa_publikation()
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        issue, _ = repo.upsert_issue(session, publication, {"uid": "1", "name": "x"})
+        issue_id = issue.id
+
+    def _spricker(*args):
+        raise PrenlyAuthError("Inte autentiserad.")
+
+    monkeypatch.setattr(routes_module, "build_issue_preview", _spricker)
+
+    svar = client.post(f"/issues/{issue_id}/preview")
+    assert svar.status_code == 502
+    # Knappen visar felet, så det måste följa med i svaret.
+    assert "Inte autentiserad." in svar.json()["error"]
 
 
 def test_installningar_avvisar_trasigt_cron(client):

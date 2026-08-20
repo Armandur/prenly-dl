@@ -72,6 +72,61 @@
       });
     })();
   </script>
+  {# Förhandsgranskning: bygget tar minuter för en tjock utgåva, så
+     knappen visar det och fliken öppnas först när filen finns. Delegerad
+     lyssnare eftersom htmx byter ut utgåvetabellen. #}
+  <script>
+    (() => {
+      document.body.addEventListener("click", async (event) => {
+        const knapp = event.target.closest("button.forhandsgranska");
+        if (!knapp || knapp.disabled) return;
+        event.preventDefault();
+
+        // Har bygget redan gjorts räcker det att öppna fliken.
+        if (knapp.dataset.klar) {
+          const redan = window.open(knapp.dataset.klar, "_blank");
+          if (redan) redan.opener = null;
+          return;
+        }
+
+        const ursprunglig = knapp.textContent.trim();
+        knapp.disabled = true;
+        knapp.setAttribute("aria-busy", "true");
+        knapp.textContent = "Bygger";
+
+        try {
+          const svar = await fetch(knapp.dataset.preview, { method: "POST" });
+          const data = await svar.json();
+          if (!svar.ok) throw new Error(data.error || "Förhandsgranskningen misslyckades");
+
+          knapp.removeAttribute("aria-busy");
+          knapp.disabled = false;
+          // Popup-skyddet stoppar window.open långt efter klicket, så när
+          // det händer lämnas en knapp kvar att trycka på. Flaggan noopener
+          // kan inte skickas med: då returnerar open alltid null och det
+          // gick inte att skilja en blockering från en öppnad flik.
+          const flik = window.open(data.url, "_blank");
+          if (flik) {
+            flik.opener = null;
+            knapp.textContent = ursprunglig;
+          } else {
+            knapp.dataset.klar = data.url;
+            knapp.textContent = "Öppna";
+          }
+        } catch (fel) {
+          knapp.removeAttribute("aria-busy");
+          knapp.disabled = false;
+          knapp.textContent = "Misslyckades";
+          knapp.title = String(fel.message || fel);
+          setTimeout(() => {
+            knapp.textContent = ursprunglig;
+            knapp.removeAttribute("title");
+          }, 6000);
+        }
+      });
+    })();
+  </script>
+
   {# Ett gemensamt dialogelement och delegerad lyssnare behövs eftersom
      htmx byter ut elementen som innehåller omslagen. #}
   <dialog class="cover-lightbox" id="cover-lightbox">

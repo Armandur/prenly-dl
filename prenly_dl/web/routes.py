@@ -799,32 +799,60 @@ def download_issue_now(
     return back(f"/publications/{slug}" if slug else "/jobs")
 
 
-@router.post("/issues/{issue_id}/preview")
-async def preview_issue(issue_id: int):
-    """Bygg en tillfällig PDF utan att göra utgåvan till en nedladdning."""
+def _forhandsgranskningsdata(issue_id: int):
+    """Uppgifterna som krävs för att bygga en förhandsgranskning."""
     with get_session() as session:
         issue = repo.get_issue(session, issue_id)
         if issue is None:
-            return JSONResponse({"error": "Utgåvan finns inte"}, status_code=404)
+            return None, "Utgåvan finns inte"
         publication = repo.get_publication(session, issue.publication_id)
         if publication is None:
-            return JSONResponse({"error": "Publikationen finns inte"}, status_code=404)
-        creds = repo.credentials_for(publication)
-        title_id = publication.title_id
-        issue_uid = issue.uid
-        prefix = publication.prefix
+            return None, "Publikationen finns inte"
+        return (
+            repo.credentials_for(publication),
+            publication.title_id,
+            issue.uid,
+            publication.prefix,
+        ), None
+
+
+@router.post("/issues/{issue_id}/preview")
+async def build_preview(issue_id: int):
+    """Bygg PDF:en och svara med adressen att öppna den på.
+
+    Bygget kan ta minuter, så det är skilt från öppnandet: knappen visar
+    en spinner under tiden och öppnar fliken först när filen finns.
+    """
+    data, fel = _forhandsgranskningsdata(issue_id)
+    if data is None:
+        return JSONResponse({"error": fel}, status_code=404)
+    creds, title_id, issue_uid, prefix = data
 
     try:
-        path = await run_in_threadpool(
-            build_issue_preview,
-            creds,
-            title_id,
-            issue_uid,
-            issue_id,
-            prefix,
+        await run_in_threadpool(
+            build_issue_preview, creds, title_id, issue_uid, issue_id, prefix
         )
     except PrenlyError as error:
         logger.warning("Kunde inte förhandsgranska utgåva %s: %s", issue_id, error)
+        return JSONResponse(
+            {"error": f"Förhandsgranskningen misslyckades: {error}"}, status_code=502
+        )
+    return JSONResponse({"url": f"/issues/{issue_id}/preview"})
+
+
+@router.get("/issues/{issue_id}/preview")
+async def open_preview(issue_id: int):
+    """Servera en redan byggd förhandsgranskning, eller bygg den vid behov."""
+    data, fel = _forhandsgranskningsdata(issue_id)
+    if data is None:
+        return JSONResponse({"error": fel}, status_code=404)
+    creds, title_id, issue_uid, prefix = data
+
+    try:
+        path = await run_in_threadpool(
+            build_issue_preview, creds, title_id, issue_uid, issue_id, prefix
+        )
+    except PrenlyError as error:
         return JSONResponse(
             {"error": f"Förhandsgranskningen misslyckades: {error}"}, status_code=502
         )
