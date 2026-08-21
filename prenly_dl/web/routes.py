@@ -1084,6 +1084,18 @@ def _calibrekontext(session, kortmeddelande: str = "") -> dict:
     return kontext
 
 
+@router.post("/calibre/refresh")
+def refresh_calibre(request: Request):
+    """Läs om biblioteket från servern och matcha om.
+
+    Både böckerna och förslagen cachas fem minuter, så en ändring gjord i
+    Calibre syns annars inte förrän cachen gått ut.
+    """
+    calibre_api.glom_cache()
+    calibre_match.glom_forslag()
+    return _calibrefragment(request, "Läste om biblioteket från Calibre")
+
+
 @router.get("/calibre", response_class=HTMLResponse)
 def calibre_page(request: Request):
     with get_session() as session:

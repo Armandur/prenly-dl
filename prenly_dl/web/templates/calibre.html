@@ -10,5 +10,12 @@
   </p>
 </hgroup>
 
+<div class="card-actions" style="margin-bottom:1.5rem">
+  <form method="post" action="/calibre/refresh"
+        hx-post="/calibre/refresh" hx-target="#calibre-forslag" hx-swap="outerHTML">
+    <button class="secondary outline">Hämta om från Calibre</button>
+  </form>
+</div>
+
 {% include "calibre_forslag.html" %}
 {% endblock %}
