@@ -126,7 +126,7 @@ def test_oversikten_visar_bara_bevakade(client):
     assert "Tidningen" in svar.text
     assert "Inte bevakad" not in svar.text
     # Men den finns i katalogen.
-    assert "Inte bevakad" in client.get("/katalog").text
+    assert "Inte bevakad" in client.get("/catalogue").text
 
 
 def test_omslag_for_okand_publikation_ger_404(client):
@@ -207,9 +207,9 @@ def test_omslagsmallarna_pekar_pa_stor_variant(client):
         'data-lightbox-src="/covers/4019/omslag123.jpg?stor=1"'
     )
     oversikt = client.get("/")
-    katalog = client.get("/katalog")
+    katalog = client.get("/catalogue")
     sajtkort = client.post(
-        f"/katalog/{publication_id}/toggle",
+        f"/catalogue/{publication_id}/toggle",
         data={"aktiv": "on"},
         headers={"HX-Request": "true"},
     )
@@ -277,7 +277,7 @@ def test_katalogatgarder_svarar_med_sajtkortet_for_htmx(client, monkeypatch):
     site_id, pub_id = _sajt_och_titlar(client)
 
     toggle = client.post(
-        f"/katalog/{pub_id}/toggle", data={"aktiv": "on"},
+        f"/catalogue/{pub_id}/toggle", data={"aktiv": "on"},
         headers={"HX-Request": "true"},
     )
     assert toggle.status_code == 200
@@ -293,10 +293,10 @@ def test_katalogatgarder_svarar_med_sajtkortet_for_htmx(client, monkeypatch):
 def test_katalogatgarder_utan_javascript_gar_tillbaka(client):
     site_id, pub_id = _sajt_och_titlar(client)
     svar = client.post(
-        f"/katalog/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=False
+        f"/catalogue/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=False
     )
     assert svar.status_code == 303
-    assert svar.headers["location"] == "/katalog"
+    assert svar.headers["location"] == "/catalogue"
 
 
 def test_toggle_slar_pa_och_av(client):
@@ -304,11 +304,11 @@ def test_toggle_slar_pa_och_av(client):
 
     site_id, pub_id = _sajt_och_titlar(client)
 
-    client.post(f"/katalog/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=True)
+    client.post(f"/catalogue/{pub_id}/toggle", data={"aktiv": "on"}, follow_redirects=True)
     with get_session() as session:
         assert repo.get_publication(session, pub_id).enabled is True
 
-    client.post(f"/katalog/{pub_id}/toggle", data={"aktiv": ""}, follow_redirects=True)
+    client.post(f"/catalogue/{pub_id}/toggle", data={"aktiv": ""}, follow_redirects=True)
     with get_session() as session:
         assert repo.get_publication(session, pub_id).enabled is False
 
@@ -324,7 +324,7 @@ def test_katalogen_deduplicerar_titel_och_visar_sajtvis_lasratt(client):
         repo.upsert_title_access(session, dalarna, 259, "Expressen", readable=False)
         repo.upsert_title_access(session, angermanland, 259, "Expressen", readable=True)
 
-    svar = client.get("/katalog")
+    svar = client.get("/catalogue")
     assert svar.status_code == 200
     assert svar.text.count(">Expressen</a>") == 1
     assert "https://dalarna.se: Ingen läsrätt" in svar.text
@@ -340,7 +340,7 @@ def test_uppgifter_listar_sajt_med_antal_titlar(client):
         repo.upsert_title_access(session, site, 1, "Läsbar", readable=True)
         repo.upsert_title_access(session, site, 2, "Låst", readable=False)
 
-    svar = client.get("/uppgifter")
+    svar = client.get("/credentials")
     assert svar.status_code == 200
     assert "https://a.se" in svar.text
     assert "2 titlar, 1 läsbara" in svar.text

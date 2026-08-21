@@ -250,7 +250,7 @@ def test_webbformular_kopplar_flyttar_och_tar_bort_bilaga(client, temp_env):
     assert nested.is_file()
     assert not pdf.exists()
     assert "Bilaga till Huvud" in client.get("/").text
-    assert "Bilaga till Huvud" in client.get("/katalog").text
+    assert "Bilaga till Huvud" in client.get("/catalogue").text
 
     response = client.post(
         f"/publications/{attachment_id}/edit",

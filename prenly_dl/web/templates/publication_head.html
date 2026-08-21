@@ -29,7 +29,7 @@
       {% if kortmeddelande %}<span class="kortbesked kortbesked-smal">{{ kortmeddelande }}</span>{% endif %}
       <br><span class="muted">
         Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste ·
-        {% if site %}<a href="/uppgifter">{{ site.url }}</a>{% else %}ingen läsbar sajt{% endif %}
+        {% if site %}<a href="/credentials">{{ site.url }}</a>{% else %}ingen läsbar sajt{% endif %}
       </span>
     </p>
   </hgroup>

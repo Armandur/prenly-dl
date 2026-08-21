@@ -11,7 +11,7 @@
 {% include "stats_cards.html" %}
 
 <div class="card-actions" style="margin-bottom:1rem">
-  <a href="/katalog" role="button">Katalog</a>
+  <a href="/catalogue" role="button">Katalog</a>
   <form method="post" action="/jobs/poll-all"><button class="secondary">Kontrollera alla nu</button></form>
 </div>
 
@@ -24,8 +24,8 @@
 
 {% if not rows %}
   <article>
-    Inga publikationer bevakas. <a href="/katalog">Aktivera dem i katalogen</a>,
-    eller <a href="/uppgifter">hämta inloggningsuppgifter</a> om katalogen är tom.
+    Inga publikationer bevakas. <a href="/catalogue">Aktivera dem i katalogen</a>,
+    eller <a href="/credentials">hämta inloggningsuppgifter</a> om katalogen är tom.
   </article>
 {% endif %}
 
@@ -97,7 +97,7 @@
         {% set pub = job_publications.get(job.publication_id) %}
         {% set sajt = job_sites.get(job.site_id) %}
         {% if pub %}<a href="/publications/{{ pub.slug }}">{{ pub.name }}</a>
-        {% elif sajt %}<a href="/katalog">{{ sajt.url }}</a>
+        {% elif sajt %}<a href="/catalogue">{{ sajt.url }}</a>
         {% else %}alla publikationer{% endif %}
       </td>
       <td><span class="badge {{ job.status|status_class }}">{{ job.status }}</span></td>

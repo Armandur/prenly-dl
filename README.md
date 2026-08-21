@@ -85,7 +85,7 @@ publikation får statusen "Utloggad" i webbui:t, eller när du vill se vad
 kontot faktiskt kan läsa vid "Ingen prenumeration":
 
 1. Logga in på tidningens läsarsida i webbläsaren.
-2. Öppna `/uppgifter` i prenly-dl, kopiera konsolsnutten och kör den i
+2. Öppna `/credentials` i prenly-dl, kopiera konsolsnutten och kör den i
    webbläsarens konsol (F12 → Console) på läsarsidan.
 3. Klistra in resultatet i rutan högst upp på samma sida. Alla titlar sajten
    exponerar sparas i katalogen, och de du kryssar i bevakas.

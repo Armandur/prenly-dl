@@ -213,7 +213,7 @@ def test_htmx_polling_far_204_i_stallet_for_inloggningssidan(temp_env, monkeypat
 
 
 def test_uppgiftssidan_visar_konsolsnutten(client):
-    response = client.get("/uppgifter")
+    response = client.get("/credentials")
     assert response.status_code == 200
     # Sidan ska visa den riktiga snutten, inte en beskrivning av den.
     assert "PrenlyData" in response.text
@@ -271,7 +271,7 @@ Kör prenlyKonfig() för att kopiera den första.
 
 def test_listan_byggs_fran_titellistan_inte_fran_blocken(client):
     """Ett block ska räcka: resten hämtas från Prenly."""
-    svar = client.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    svar = client.post("/credentials/review", data={"klistrat": ETT_BLOCK})
     assert svar.status_code == 200
     # Bilagan fanns inte i det inklistrade blocket men i titellistan.
     assert "Bilagan" in svar.text
@@ -281,7 +281,7 @@ def test_listan_byggs_fran_titellistan_inte_fran_blocken(client):
 
 
 def test_granskning_hittar_alla_konfigurationer_i_utskriften(client):
-    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    svar = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     assert svar.status_code == 200
     assert "2 publikationer" in svar.text
     assert "Kundtidning DN" in svar.text
@@ -292,7 +292,7 @@ def test_granskning_hittar_alla_konfigurationer_i_utskriften(client):
 
 
 def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
-    svar = client_utan_api.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    svar = client_utan_api.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     assert "Kunde inte hämta publikationslistan" in svar.text
     assert "Inte autentiserad" in svar.text
     # Blocken som klistrades in går ändå att spara.
@@ -300,26 +300,26 @@ def test_utan_titellista_anvands_det_inklistrade(client_utan_api):
 
 
 def test_granskning_markerar_befintliga(client):
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    granskning = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
-    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    svar = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     assert "Finns redan" in svar.text
 
 
 def test_text_utan_konfiguration_ger_besked(client):
     svar = client.post(
-        "/uppgifter/granska", data={"klistrat": "bara brus"}, follow_redirects=True
+        "/credentials/review", data={"klistrat": "bara brus"}, follow_redirects=True
     )
     assert "Hittade ingen konfiguration" in svar.text
 
 
 def test_alla_titlar_sparas_men_bara_de_valda_aktiveras(client):
     """Katalogen ska bli komplett; bevakning är ett aktivt val."""
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    granskning = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     varden = valbara(granskning.text)
     alla = alla_varden(granskning.text)
     assert len(varden) == 2
@@ -330,7 +330,7 @@ def test_alla_titlar_sparas_men_bara_de_valda_aktiveras(client):
     olasbara = re.findall(r'name="olasbar" value="([^"]+)"', granskning.text)
     assert olasbara, "titeln utan läsrätt ska skickas med som sådan"
     svar = client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": varden[0], "alla": alla, "olasbar": olasbara},
         follow_redirects=True,
     )
@@ -353,7 +353,7 @@ def test_alla_titlar_sparas_men_bara_de_valda_aktiveras(client):
 
 
 def test_sparar_utan_nagot_alls_ger_besked(client):
-    svar = client.post("/uppgifter/spara", data={}, follow_redirects=True)
+    svar = client.post("/credentials/save", data={}, follow_redirects=True)
     assert "Inget att spara" in svar.text
 
 
@@ -362,9 +362,9 @@ def test_bara_uppgifter_utan_att_aktivera_nagot(client):
     from prenly_dl.db import repository as repo_module
     from prenly_dl.db.session import get_session
 
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    granskning = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     svar = client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
@@ -383,9 +383,9 @@ def test_fornyelse_lamnar_befintlig_bevakning_ifred(client):
     from prenly_dl.db import repository as repo_module
     from prenly_dl.db.session import get_session
 
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    granskning = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
@@ -395,9 +395,9 @@ def test_fornyelse_lamnar_befintlig_bevakning_ifred(client):
 
     # Förnya utan att kryssa i något.
     ny = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "farsk"')
-    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny})
+    granskning2 = client.post("/credentials/review", data={"klistrat": ny})
     svar = client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"alla": alla_varden(granskning2.text)},
         follow_redirects=True,
     )
@@ -410,17 +410,17 @@ def test_fornyelse_lamnar_befintlig_bevakning_ifred(client):
 
 
 def test_fornyade_uppgifter_galler_alla_sajtens_titlar(client):
-    granskning = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    granskning = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
 
     ny_token = KONSOLUTSKRIFT.replace('"auth": "def"', '"auth": "helt-ny-token"')
-    granskning2 = client.post("/uppgifter/granska", data={"klistrat": ny_token})
+    granskning2 = client.post("/credentials/review", data={"klistrat": ny_token})
     client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning2.text), "alla": alla_varden(granskning2.text)},
         follow_redirects=True,
     )
@@ -444,26 +444,26 @@ ETT_BLOCK = """{
 
 
 def test_ett_enskilt_block_fungerar(client_utan_api):
-    svar = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    svar = client_utan_api.post("/credentials/review", data={"klistrat": ETT_BLOCK})
     assert "1 publikation" in svar.text
     assert len(valbara(svar.text)) == 1
 
 
 def test_ett_block_fornyar_hela_sajten(client_utan_api):
     granskning = client_utan_api.post(
-        "/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT}
+        "/credentials/review", data={"klistrat": KONSOLUTSKRIFT}
     )
     client_utan_api.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )
 
     # Ett block räcker för att förnya uppgifterna för sajtens alla titlar.
-    granskning2 = client_utan_api.post("/uppgifter/granska", data={"klistrat": ETT_BLOCK})
+    granskning2 = client_utan_api.post("/credentials/review", data={"klistrat": ETT_BLOCK})
     assert "Finns redan" in granskning2.text
     client_utan_api.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning2.text), "alla": alla_varden(granskning2.text)},
         follow_redirects=True,
     )
@@ -481,7 +481,7 @@ def test_ett_block_fornyar_hela_sajten(client_utan_api):
 
 def test_granskning_via_htmx_ger_bara_fragmentet(client):
     svar = client.post(
-        "/uppgifter/granska",
+        "/credentials/review",
         data={"klistrat": KONSOLUTSKRIFT},
         headers={"HX-Request": "true"},
     )
@@ -495,7 +495,7 @@ def test_granskning_via_htmx_ger_bara_fragmentet(client):
 
 def test_htmx_fel_visas_i_fragmentet_utan_omdirigering(client):
     svar = client.post(
-        "/uppgifter/granska",
+        "/credentials/review",
         data={"klistrat": "bara brus"},
         headers={"HX-Request": "true"},
         follow_redirects=False,
@@ -506,7 +506,7 @@ def test_htmx_fel_visas_i_fragmentet_utan_omdirigering(client):
 
 
 def test_granskning_utan_javascript_ger_hela_sidan(client):
-    svar = client.post("/uppgifter/granska", data={"klistrat": KONSOLUTSKRIFT})
+    svar = client.post("/credentials/review", data={"klistrat": KONSOLUTSKRIFT})
     assert "<!doctype html>" in svar.text.lower()
     assert "Klistra in resultatet" in svar.text
     assert "2 publikationer" in svar.text
@@ -515,10 +515,10 @@ def test_granskning_utan_javascript_ger_hela_sidan(client):
 
 
 def test_inklistringsytan_kommer_forst_pa_uppgiftssidan(client):
-    svar = client.get("/uppgifter")
+    svar = client.get("/credentials")
     assert svar.status_code == 200
     assert 'id="klistra"' in svar.text
-    assert 'hx-post="/uppgifter/granska"' in svar.text
+    assert 'hx-post="/credentials/review"' in svar.text
     # Ytan man kommer för ska ligga före instruktionerna och koden.
     assert svar.text.index('id="klistra"') < svar.text.index("Så här får du tag i dem")
     assert svar.text.index('id="klistra"') < svar.text.index('id="snutt"')
@@ -543,7 +543,7 @@ BARA_UPPGIFTER = """{
 
 def test_bara_uppgifter_racker(client):
     """Konsolsnutten skickar inga publikationer - de hämtas från API:t."""
-    svar = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    svar = client.post("/credentials/review", data={"klistrat": BARA_UPPGIFTER})
     assert svar.status_code == 200
     assert "2 publikationer" in svar.text
     assert "Kundtidning DN" in svar.text
@@ -551,9 +551,9 @@ def test_bara_uppgifter_racker(client):
 
 
 def test_bara_uppgifter_sparar_sajten(client):
-    granskning = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    granskning = client.post("/credentials/review", data={"klistrat": BARA_UPPGIFTER})
     svar = client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={
             "valda": valbara(granskning.text),
             "alla": alla_varden(granskning.text),
@@ -577,12 +577,12 @@ def test_bara_uppgifter_sparar_sajten(client):
 def test_uppgifter_utan_titellista_sparar_anda_sajten(client_utan_api):
     """Går API:t inte att nå ska uppgifterna ändå gå att lägga in."""
     granskning = client_utan_api.post(
-        "/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER}
+        "/credentials/review", data={"klistrat": BARA_UPPGIFTER}
     )
     assert "Kunde inte hämta publikationslistan" in granskning.text
 
     svar = client_utan_api.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"alla": [BARA_UPPGIFTER], "valda": [BARA_UPPGIFTER]},
         follow_redirects=True,
     )
@@ -598,7 +598,7 @@ def test_uppgifter_utan_titellista_sparar_anda_sajten(client_utan_api):
 def test_valj_alla_finns_i_fragmentet(client):
     """Rutan och dess script måste följa med det htmx swappar in."""
     svar = client.post(
-        "/uppgifter/granska",
+        "/credentials/review",
         data={"klistrat": KONSOLUTSKRIFT},
         headers={"HX-Request": "true"},
     )
@@ -611,9 +611,9 @@ def test_valj_alla_finns_i_fragmentet(client):
 
 def test_sparande_koar_synk_sa_omslagen_finns_direkt(client):
     """Katalogen ska ha omslag utan att man ber om det."""
-    granskning = client.post("/uppgifter/granska", data={"klistrat": BARA_UPPGIFTER})
+    granskning = client.post("/credentials/review", data={"klistrat": BARA_UPPGIFTER})
     svar = client.post(
-        "/uppgifter/spara",
+        "/credentials/save",
         data={"valda": valbara(granskning.text), "alla": alla_varden(granskning.text)},
         follow_redirects=True,
     )

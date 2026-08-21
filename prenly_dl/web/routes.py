@@ -110,7 +110,7 @@ def logout(request: Request):
 def index(request: Request):
     with get_session() as session:
         # Översikten visar det man valt att bevaka; hela katalogen finns
-        # under /katalog.
+        # under /catalogue.
         publications = repo.list_publications(session, enabled_only=True)
         stats = repo.dashboard_stats(session)
         jobs = repo.list_jobs(session, limit=10)
@@ -157,7 +157,7 @@ def _sajtkontext(session, site) -> dict:
 def _sajtrad(request: Request, site_id: int, meddelande: str | None = None):
     """Rendera om en sajtrad för htmx, eller gå tillbaka till uppgifterna."""
     if not request.headers.get("HX-Request"):
-        return back("/uppgifter")
+        return back("/credentials")
     with get_session() as session:
         site = repo.get_site(session, site_id)
         if site is None:
@@ -183,7 +183,7 @@ def _katalogkontext(session) -> list[dict]:
     return rader
 
 
-@router.get("/katalog", response_class=HTMLResponse)
+@router.get("/catalogue", response_class=HTMLResponse)
 def catalogue(request: Request):
     """Alla kända titlar, deduplicerade på Prenlys globala titel-ID."""
     with get_session() as session:
@@ -192,13 +192,13 @@ def catalogue(request: Request):
     return render(request, "catalogue.html", rader=rader, har_sajter=har_sajter)
 
 
-@router.post("/katalog/{publication_id}/toggle")
+@router.post("/catalogue/{publication_id}/toggle")
 def toggle_publication(request: Request, publication_id: int, aktiv: str = Form("")):
     """Slå på eller av bevakning av en titel."""
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is None:
-            return back("/katalog")
+            return back("/catalogue")
         if aktiv == "on" and not publication.readable:
             besked = f"Ingen av dina inloggningsuppgifter ger läsrätt till {publication.name}"
         else:
@@ -216,7 +216,7 @@ def toggle_publication(request: Request, publication_id: int, aktiv: str = Form(
                 kortmeddelande=besked, flashes=[],
             )
     flash(request, besked, "success")
-    return back("/katalog")
+    return back("/catalogue")
 
 
 @router.post("/sites/{site_id}/verify")
@@ -225,14 +225,14 @@ def verify_site_route(request: Request, site_id: int):
     with get_session() as session:
         site = repo.get_site(session, site_id)
         if site is None:
-            return back("/uppgifter")
+            return back("/credentials")
         status = verify_site(session, site)
         url, message = site.url, site.auth_message
     besked = "Uppgifterna fungerar" if status is AuthStatus.OK else f"{message}"
     if request.headers.get("HX-Request"):
         return _sajtrad(request, site_id, besked)
     flash(request, f"{url}: {besked}", "success" if status is AuthStatus.OK else "error")
-    return back("/uppgifter")
+    return back("/credentials")
 
 
 @router.post("/sites/{site_id}/sync")
@@ -240,7 +240,7 @@ def sync_site(request: Request, site_id: int):
     """Köa en synk av sajtens titlar och deras omslag."""
     with get_session() as session:
         if repo.get_site(session, site_id) is None:
-            return back("/uppgifter")
+            return back("/credentials")
         job = repo.enqueue_site_sync(session, site_id)
     besked = (
         "Sajten synkas redan"
@@ -250,7 +250,7 @@ def sync_site(request: Request, site_id: int):
     if request.headers.get("HX-Request"):
         return _sajtrad(request, site_id, besked)
     flash(request, besked, "info" if job is None else "success")
-    return back("/uppgifter")
+    return back("/credentials")
 
 
 @router.post("/sites/{site_id}/delete")
@@ -262,7 +262,7 @@ def delete_site(request: Request, site_id: int):
     if request.headers.get("HX-Request"):
         return HTMLResponse("")
     flash(request, "Sajten togs bort", "success")
-    return back("/uppgifter")
+    return back("/credentials")
 
 
 @router.get("/covers/{title_id}/{checksum}.jpg")
@@ -297,7 +297,7 @@ def _konsolsnutt() -> str:
     )
 
 
-@router.get("/uppgifter", response_class=HTMLResponse)
+@router.get("/credentials", response_class=HTMLResponse)
 def credentials_help(request: Request):
     """Sparade sajter samt konsolsnutten och inklistringsytan."""
     with get_session() as session:
@@ -334,7 +334,7 @@ def _rendera_fynd(
     )
 
 
-@router.post("/uppgifter/granska", response_class=HTMLResponse)
+@router.post("/credentials/review", response_class=HTMLResponse)
 def review_pasted(request: Request, klistrat: str = Form("")):
     """Visa vad som hittades i den klistrade texten innan något sparas."""
     if not klistrat.strip():
@@ -457,7 +457,7 @@ def _fynd_fran_konfigurationer(
     return fynd, varning, sajtrader
 
 
-@router.post("/uppgifter/spara")
+@router.post("/credentials/save")
 async def save_pasted(request: Request):
     """Spara sajtens uppgifter och aktivera de titlar som kryssats i.
 
@@ -472,7 +472,7 @@ async def save_pasted(request: Request):
     # ett token utan att ändra vad som bevakas.
     if not alla:
         flash(request, "Inget att spara", "error")
-        return back("/uppgifter")
+        return back("/credentials")
 
     def _tolka(rader):
         for rad in rader:
@@ -542,7 +542,7 @@ async def save_pasted(request: Request):
         delar.append("bevakningen oförändrad")
     delar.append("hämtar omslag i bakgrunden")
     flash(request, ", ".join(delar).capitalize(), "success")
-    return back("/katalog")
+    return back("/catalogue")
 
 
 def _bibliotekssokvag(file_path: str | None) -> str | None:

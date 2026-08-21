@@ -3,7 +3,7 @@
   {% if not rader %}
     <article>
       Katalogen visar det dina inloggningsuppgifter ger tillgång till.
-      <a href="/uppgifter">Lägg till en sajt</a> för att fylla den.
+      <a href="/credentials">Lägg till en sajt</a> för att fylla den.
     </article>
   {% else %}
   <div class="scroll-x">
@@ -18,8 +18,8 @@
       <tr class="katalog-rad{% if not rad.lasbar %} rad-otillganglig{% endif %}"
           data-haystack="{{ (title.name|lower)|e }}">
         <td>
-          <form method="post" action="/katalog/{{ pub.id }}/toggle" class="inline"
-                hx-post="/katalog/{{ pub.id }}/toggle" hx-target="#katalogtabell" hx-swap="outerHTML">
+          <form method="post" action="/catalogue/{{ pub.id }}/toggle" class="inline"
+                hx-post="/catalogue/{{ pub.id }}/toggle" hx-target="#katalogtabell" hx-swap="outerHTML">
             <input type="hidden" name="aktiv" value="{{ '' if pub.enabled else 'on' }}">
             <button class="secondary outline" {% if not rad.lasbar and not pub.enabled %}disabled{% endif %}>
               {{ "På" if pub.enabled else "Av" }}
