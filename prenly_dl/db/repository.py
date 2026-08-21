@@ -313,6 +313,20 @@ def count_issues(session: Session, publication_id: int) -> int:
     ).scalar_one()
 
 
+def count_catalogue_issues(session: Session, publication_id: int) -> int:
+    """Utgåvor som finns i Prenlys katalog, alltså utan diskfynden.
+
+    Katalogdjupet mäts mot det här talet: räknades diskfynden in skulle
+    bläddringen bakåt tro sig färdig innan katalogen var det.
+    """
+    return session.execute(
+        select(func.count(Issue.id)).where(
+            Issue.title_id == _title_id(session, publication_id),
+            Issue.disk_only.is_(False),
+        )
+    ).scalar_one()
+
+
 def count_title_issues(session: Session, title_id: int) -> int:
     return session.execute(
         select(func.count(Issue.id)).where(Issue.title_id == title_id)
@@ -339,9 +353,35 @@ def upsert_issue(
     issue.name = str(entry.get("name") or uid)
     issue.publication_date = entry.get("publication_date")
     issue.cover_checksum = (entry.get("media") or {}).get("checksum")
+    if created:
+        _ta_over_diskpost(session, issue)
     session.add(issue)
     session.flush()
     return issue, created
+
+
+def _ta_over_diskpost(session: Session, issue: Issue) -> None:
+    """Låt en katalogutgåva ärva filen från en diskpost med samma namn.
+
+    Utan det får publikationen två rader för samma utgåva så fort en fil
+    som fallit ur katalogen dyker upp i den igen. Namnet är det enda de
+    två har gemensamt: diskposten har inget uid från Prenly.
+    """
+    diskpost = session.execute(
+        select(Issue).where(
+            Issue.title_id == issue.title_id,
+            Issue.disk_only.is_(True),
+            Issue.name == issue.name,
+        )
+    ).unique().scalar_one_or_none()
+    if diskpost is None:
+        return
+    issue.file_path = diskpost.file_path
+    issue.page_count = diskpost.page_count
+    issue.downloaded_at = diskpost.downloaded_at
+    issue.status = diskpost.status
+    session.delete(diskpost)
+    session.flush()
 
 
 def latest_issue(session: Session, publication_id: int) -> Issue | None:

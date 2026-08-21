@@ -218,6 +218,9 @@ class Issue(Base):
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     downloaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # En fil som ligger på disk utan motsvarighet i Prenlys katalog. Den går
+    # inte att hämta igen, så den räknas inte som en katalogutgåva.
+    disk_only: Mapped[bool] = mapped_column(Boolean, default=False)
     calibre_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)

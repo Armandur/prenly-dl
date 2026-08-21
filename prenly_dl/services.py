@@ -345,7 +345,7 @@ def ensure_catalogue_depth(
     """
     if publication.catalogue_complete:
         return 0
-    if repo.count_issues(session, publication.id) >= behovs:
+    if repo.count_catalogue_issues(session, publication.id) >= behovs:
         return 0
 
     http = build_session()
@@ -357,7 +357,7 @@ def ensure_catalogue_depth(
     # Varje varv flyttar catalogue_offset framåt, så loopen kan inte fastna.
     while (
         not publication.catalogue_complete
-        and repo.count_issues(session, publication.id) < behovs
+        and repo.count_catalogue_issues(session, publication.id) < behovs
     ):
         entries = get_catalogue_issues(
             http, creds, token, publication.title_id,
@@ -381,7 +381,7 @@ def ensure_catalogue_depth(
         session.add(publication)
         session.commit()
         if progress:
-            kanda = repo.count_issues(session, publication.id)
+            kanda = repo.count_catalogue_issues(session, publication.id)
             progress(kanda, kanda if publication.catalogue_complete else behovs)
 
     if nya:
@@ -482,7 +482,7 @@ def run_catalogue_job(session: Session, job: Job) -> str:
     if publication is None:
         raise PrenlyError("Jobbet saknar publikation")
 
-    innan = repo.count_issues(session, publication.id)
+    innan = repo.count_catalogue_issues(session, publication.id)
     job_id = job.id
 
     def progress(gjort: int, totalt: int) -> None:
@@ -492,7 +492,7 @@ def run_catalogue_job(session: Session, job: Job) -> str:
     # slutar på catalogue_complete och inte på taket. En dagstidning har
     # flera tusen utgåvor, så förloppet är värt att visa.
     nya = ensure_catalogue_depth(session, publication, 100_000, progress=progress)
-    totalt = repo.count_issues(session, publication.id)
+    totalt = repo.count_catalogue_issues(session, publication.id)
     return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
 
 
