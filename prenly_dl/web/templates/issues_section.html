@@ -79,15 +79,15 @@
       </td>
       <td>
         {{ issue.name }}
-        {# Temat går inte att hämta för äldre utgåvor, som saknar
+        {# Rubriken går inte att hämta för äldre utgåvor, som saknar
            artiklar i Prenly, men det styr titeln i Calibre. #}
-        <form method="post" action="/issues/{{ issue.id }}/theme"
-              class="temafalt-rad" role="group"
-              hx-post="/issues/{{ issue.id }}/theme"
+        <form method="post" action="/issues/{{ issue.id }}/headline"
+              class="rubrikfalt-rad" role="group"
+              hx-post="/issues/{{ issue.id }}/headline"
               hx-target="#utgavor" hx-swap="outerHTML">
           <input type="hidden" name="page" value="{{ page }}">
-          <input name="theme" value="{{ issue.theme }}" placeholder="tema"
-                 aria-label="Tema för {{ issue.name }}">
+          <input name="headline" value="{{ issue.headline }}" placeholder="rubrik"
+                 aria-label="Rubrik för {{ issue.name }}">
           <button class="secondary outline">Spara</button>
         </form>
       </td>

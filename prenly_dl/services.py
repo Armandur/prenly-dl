@@ -501,13 +501,13 @@ def run_catalogue_job(session: Session, job: Job) -> str:
     return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
 
 
-def run_themes_job(session: Session, job: Job) -> str:
-    """Hämta utgåvornas tema, alltså förstasidesartikelns rubrik.
+def run_headlines_job(session: Session, job: Job) -> str:
+    """Hämta utgåvornas rubrik, alltså förstasidesartikelns rubrik.
 
-    Temat kommer normalt med när en utgåva laddas ner, men de som aldrig
+    Rubriken kommer normalt med när en utgåva laddas ner, men de som aldrig
     hämtats saknar det - och det styr titeln i Calibre. De äldsta
     utgåvorna har inga artiklar alls i Prenly, bara skannade sidor, och
-    för dem finns inget tema att hämta.
+    för dem finns inget rubrik att hämta.
     """
     publication = (
         repo.get_publication(session, job.publication_id) if job.publication_id else None
@@ -515,9 +515,9 @@ def run_themes_job(session: Session, job: Job) -> str:
     if publication is None:
         raise PrenlyError("Jobbet saknar publikation")
 
-    utgavor = repo.issues_without_theme(session, publication.title_id)
+    utgavor = repo.issues_without_headline(session, publication.title_id)
     if not utgavor:
-        return "Alla utgåvor har redan ett tema"
+        return "Alla utgåvor har redan ett rubrik"
 
     http = build_session()
     site = _site_for_publication(session, publication)
@@ -526,14 +526,14 @@ def run_themes_job(session: Session, job: Job) -> str:
     hittade, tomma, fel = 0, 0, 0
     for gjort, issue in enumerate(utgavor, start=1):
         try:
-            tema = front_page_headline(get_issue(http, creds, publication.title_id, issue.uid))
+            rubrik = front_page_headline(get_issue(http, creds, publication.title_id, issue.uid))
         except PrenlyError as error:
             # En trasig utgåva ska inte fälla genomgången av de andra.
             logger.warning("Kunde inte läsa %s: %s", issue.name, error)
             fel += 1
             continue
-        if tema:
-            issue.theme = tema
+        if rubrik:
+            issue.headline = rubrik
             session.add(issue)
             hittade += 1
         else:
@@ -545,7 +545,7 @@ def run_themes_job(session: Session, job: Job) -> str:
             session.commit()
             repo.update_job_progress(job.id, gjort, len(utgavor))
 
-    delar = [f"{hittade} teman hämtade"]
+    delar = [f"{hittade} rubriker hämtade"]
     if tomma:
         delar.append(f"{tomma} utgåvor saknar artiklar i Prenly")
     if fel:
@@ -632,8 +632,8 @@ def run_download_job(session: Session, job: Job) -> str:
     issue.status = IssueStatus.DONE.value
     issue.error = None
     issue.file_path = str(result.path)
-    if result.theme:
-        issue.theme = result.theme
+    if result.headline:
+        issue.headline = result.headline
     if not result.skipped:
         issue.page_count = result.page_count
         issue.downloaded_at = utcnow()
@@ -681,7 +681,7 @@ def _skjut_till_calibre(
                 publikation=publication.name,
                 utgava=issue.name,
                 datum=issue.publication_date or "",
-                tema=issue.theme,
+                rubrik=issue.headline,
                 nummer=nummer,
             ),
             authors=publication.name,
@@ -710,8 +710,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_catalogue_job(session, job)
         elif job.type == JobType.SITE_SYNC.value:
             summary = run_site_sync_job(session, job)
-        elif job.type == JobType.THEMES.value:
-            summary = run_themes_job(session, job)
+        elif job.type == JobType.HEADLINES.value:
+            summary = run_headlines_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

@@ -571,29 +571,29 @@ def enqueue_catalogue(session: Session, publication_id: int) -> Job | None:
     return job
 
 
-def enqueue_themes(session: Session, publication_id: int) -> Job | None:
+def enqueue_headlines(session: Session, publication_id: int) -> Job | None:
     pagaende = session.execute(select(Job).where(
-        Job.type == JobType.THEMES.value,
+        Job.type == JobType.HEADLINES.value,
         Job.publication_id == publication_id,
         Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
     )).first()
     if pagaende:
         return None
-    job = Job(type=JobType.THEMES.value, status=JobStatus.QUEUED.value,
+    job = Job(type=JobType.HEADLINES.value, status=JobStatus.QUEUED.value,
               publication_id=publication_id)
     session.add(job)
     session.flush()
     return job
 
 
-def issues_without_theme(session: Session, title_id: int) -> list[Issue]:
-    """Utgåvor vars tema inte är hämtat, nyast först."""
+def issues_without_headline(session: Session, title_id: int) -> list[Issue]:
+    """Utgåvor vars rubrik inte är hämtat, nyast först."""
     return list(
         session.execute(
             select(Issue).where(
                 Issue.title_id == title_id,
                 Issue.disk_only.is_(False),
-                or_(Issue.theme == "", Issue.theme.is_(None)),
+                or_(Issue.headline == "", Issue.headline.is_(None)),
             ).order_by(Issue.publication_date.desc())
         ).unique().scalars()
     )

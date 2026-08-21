@@ -458,12 +458,12 @@ def test_publikationens_monster_anvands_vid_nedladdning(db, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Tema och nummer
+# Rubrik och nummer
 # --------------------------------------------------------------------------
 
 
 def test_temat_ar_forstasidans_rubrik():
-    """Uppmätt mot Prenly: förstasidesartikelns rubrik är numrets tema."""
+    """Uppmätt mot Prenly: förstasidesartikelns rubrik är numrets rubrik."""
     from prenly_dl.api import front_page_headline
 
     data = {
@@ -487,18 +487,18 @@ def test_temat_ar_forstasidans_rubrik():
 
 def test_monstret_ger_samma_namn_som_biblioteket_redan_har():
     assert calibre.format_title(
-        "{år}-{nummer} - {tema}",
+        "{år}-{nummer} - {rubrik}",
         publikation="Tidningen Hemslöjd", utgava="2024-04-02",
-        datum="2024-04-02", tema="Hitta gnistan!", nummer=2,
+        datum="2024-04-02", rubrik="Hitta gnistan!", nummer=2,
     ) == "2024-2 - Hitta gnistan!"
 
 
 def test_monster_med_tomt_falt_faller_tillbaka():
-    """Utan temat hade mönstret gett strängen '2024- -'."""
+    """Utan rubriken hade mönstret gett strängen '2024- -'."""
     assert calibre.format_title(
-        "{år}-{nummer} - {tema}",
+        "{år}-{nummer} - {rubrik}",
         publikation="Tidningen Hemslöjd", utgava="2024-04-02",
-        datum="2024-04-02", tema="", nummer=None,
+        datum="2024-04-02", rubrik="", nummer=None,
     ) == "Tidningen Hemslöjd 2024-04-02"
 
 
@@ -558,10 +558,10 @@ def test_numret_sparras_nar_katalogen_inte_ar_komplett(db, temp_env):
             assert repo.issue_number_in_year(session, issue) is None
 
 
-def test_temajobbet_fyller_pa_det_som_gar_att_hamta(db, temp_env, monkeypatch):
+def test_rubrikjobbet_fyller_pa_det_som_gar_att_hamta(db, temp_env, monkeypatch):
     """Uppmätt mot Prenly: utgåvor före 2021 har inga artiklar alls.
 
-    Jobbet ska ta de teman som finns och rapportera resten, inte spricka.
+    Jobbet ska ta de rubriker som finns och rapportera resten, inte spricka.
     """
     from prenly_dl import services
     from prenly_dl.db import repository as repo
@@ -579,7 +579,7 @@ def test_temajobbet_fyller_pa_det_som_gar_att_hamta(db, temp_env, monkeypatch):
                 session, publication,
                 {"uid": uid, "name": dag, "publication_date": dag},
             )
-        job = repo.enqueue_themes(session, publication.id)
+        job = repo.enqueue_headlines(session, publication.id)
         job_id = job.id
 
     # Den äldre utgåvan har inga artiklar, som de riktiga före 2021.
@@ -598,10 +598,10 @@ def test_temajobbet_fyller_pa_det_som_gar_att_hamta(db, temp_env, monkeypatch):
     with db() as session:
         job = session.get(Job, job_id)
         assert job.status == JobStatus.DONE.value
-        assert "1 teman hämtade" in job.message
+        assert "1 rubriker hämtade" in job.message
         assert "1 utgåvor saknar artiklar" in job.message
-        teman = {
-            i.publication_date: i.theme
+        rubriker = {
+            i.publication_date: i.headline
             for i in repo.list_issues(session, repo.list_publications(session)[0].id)
         }
-        assert teman == {"2024-04-02": "Hitta gnistan!", "2014-01-29": ""}
+        assert rubriker == {"2024-04-02": "Hitta gnistan!", "2014-01-29": ""}

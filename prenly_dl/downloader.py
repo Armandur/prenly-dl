@@ -179,13 +179,13 @@ def purge_old_previews(
 
 class DownloadResult:
     def __init__(
-        self, path: Path, page_count: int, skipped: bool = False, theme: str = ""
+        self, path: Path, page_count: int, skipped: bool = False, headline: str = ""
     ) -> None:
         self.path = path
         self.page_count = page_count
         self.skipped = skipped
-        # Temat kommer ur samma anrop som sidorna och kostar inget extra.
-        self.theme = theme
+        # Rubriken kommer ur samma anrop som sidorna och kostar inget extra.
+        self.headline = headline
 
 
 def download_issue(
@@ -207,13 +207,13 @@ def download_issue(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     issue_data = get_issue(session, creds, title_id, issue_uid)
-    tema = front_page_headline(issue_data)
+    rubrik = front_page_headline(issue_data)
     stem = safe_filename(f"{prefix}{issue_data.get('name', issue_uid)}")
     target = _safe_pdf_path(output_dir, stem)
 
     if target.exists() and not force:
         logger.info("Hoppar över %s, filen finns redan", target.name)
-        return DownloadResult(target, 0, skipped=True, theme=tema)
+        return DownloadResult(target, 0, skipped=True, headline=rubrik)
 
     checksums = get_page_checksums(issue_data)
     if not checksums:
@@ -243,7 +243,7 @@ def download_issue(
         shutil.rmtree(workdir, ignore_errors=True)
 
     logger.info("Skrev %s (%d sidor)", target, total)
-    return DownloadResult(target, total, theme=tema)
+    return DownloadResult(target, total, headline=rubrik)
 
 
 def merge_pdfs(page_files: list[Path], target: Path) -> None:

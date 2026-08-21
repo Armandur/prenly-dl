@@ -196,12 +196,12 @@ def get_page_checksums(issue_data: dict) -> dict[str, str]:
 
 
 def front_page_headline(issue_data: dict) -> str:
-    """Utgåvans tema, alltså förstasidesartikelns rubrik.
+    """Utgåvans rubrik, alltså förstasidesartikelns rubrik.
 
     Katalogen ger bara datum som namn för en del titlar, men numret har
-    ofta ett tema som står som rubrik på förstasidan. Verifierat mot
+    ofta ett rubrik som står som rubrik på förstasidan. Verifierat mot
     Tidningen Hemslöjd 2026-08-21: fyra av fyra utgåvor gav exakt det
-    tema numret marknadsförs med.
+    rubrik numret marknadsförs med.
     """
     artiklar = {a.get("id"): a for a in issue_data.get("articles", [])}
     for section in issue_data.get("sections", []):

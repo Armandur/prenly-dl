@@ -48,17 +48,17 @@
               </span>
             </div>
           </div>
-          {# De äldre utgåvorna har inga artiklar i Prenly, så temat går
+          {# De äldre utgåvorna har inga artiklar i Prenly, så rubriken går
              inte att hämta och måste kunna skrivas för hand. Det ligger
              under kortet och inte i titelkolumnen, som är smal. #}
-          <form method="post" action="/issues/{{ post.issue.id }}/theme"
-                class="temafalt" role="group"
-                hx-post="/issues/{{ post.issue.id }}/theme"
+          <form method="post" action="/issues/{{ post.issue.id }}/headline"
+                class="rubrikfalt" role="group"
+                hx-post="/issues/{{ post.issue.id }}/headline"
                 hx-target="#calibre-forslag" hx-swap="outerHTML">
-            <input name="theme" value="{{ post.issue.theme }}"
-                   placeholder="Tema, till exempel Stickspår"
-                   aria-label="Tema för {{ post.issue.name }}">
-            <button class="secondary outline">Spara tema</button>
+            <input name="headline" value="{{ post.issue.headline }}"
+                   placeholder="Rubrik, till exempel Stickspår"
+                   aria-label="Rubrik för {{ post.issue.name }}">
+            <button class="secondary outline">Spara rubrik</button>
           </form>
         </div>
 

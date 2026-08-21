@@ -217,14 +217,14 @@ def find_candidates(
                 else None
             )
             grovt = grovt + per_arnummer.get(arnummer, []) if arnummer else grovt
-            if not grovt and not issue.theme:
+            if not grovt and not issue.headline:
                 continue
             vantad = format_title(
                 publication.calibre_title,
                 publikation=publication.name,
                 utgava=issue.name,
                 datum=datum,
-                tema=issue.theme,
+                rubrik=issue.headline,
                 nummer=nummer,
             )
             traffar = {

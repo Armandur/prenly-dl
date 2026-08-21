@@ -732,19 +732,19 @@ def edit_publication(
     return back(f"/publications/{slug}")
 
 
-@router.post("/publications/{publication_id}/themes")
-def fetch_themes(request: Request, publication_id: int):
-    """Köa en genomgång som fyller på utgåvornas teman."""
+@router.post("/publications/{publication_id}/headlines")
+def fetch_headlines(request: Request, publication_id: int):
+    """Köa en genomgång som fyller på utgåvornas rubriker."""
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is None:
             return back("/")
-        antal = len(repo.issues_without_theme(session, publication.title_id))
-        job = repo.enqueue_themes(session, publication_id)
+        antal = len(repo.issues_without_headline(session, publication.title_id))
+        job = repo.enqueue_headlines(session, publication_id)
         besked = (
             "Genomgången är redan igång"
             if job is None
-            else f"Köade hämtning av tema för {antal} utgåvor"
+            else f"Köade hämtning av rubrik för {antal} utgåvor"
         )
     svar, slug = _publikationsfragment(request, publication_id, besked)
     if svar is not None:
@@ -1197,18 +1197,18 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
     return _calibrefragment(request, besked)
 
 
-@router.post("/issues/{issue_id}/theme")
-def set_issue_theme(
+@router.post("/issues/{issue_id}/headline")
+def set_issue_headline(
     request: Request,
     issue_id: int,
-    theme: str = Form(""),
+    headline: str = Form(""),
     page: int = Form(0),
 ):
-    """Sätt utgåvans tema för hand.
+    """Sätt utgåvans rubrik för hand.
 
-    Temat hämtas normalt ur förstasidesartikelns rubrik, men de äldre
+    Rubriken hämtas normalt ur förstasidesartikelns rubrik, men de äldre
     utgåvorna har inga artiklar alls i Prenly - bara skannade sidor. Utan
-    tema faller titelmönstret tillbaka på standarden.
+    rubrik faller titelmönstret tillbaka på standarden.
 
     Fältet finns på två ställen. Ett page-värde betyder att det kom från
     publikationens utgåvetabell, som ska renderas om i stället för
@@ -1218,19 +1218,19 @@ def set_issue_theme(
         issue = repo.get_issue(session, issue_id)
         if issue is None:
             return back("/calibre")
-        issue.theme = theme.strip()
+        issue.headline = headline.strip()
         session.add(issue)
         besked = (
-            f"{issue.name} har temat {issue.theme}"
-            if issue.theme
-            else f"{issue.name} har inget tema"
+            f"{issue.name} har rubriken {issue.headline}"
+            if issue.headline
+            else f"{issue.name} har inget rubrik"
         )
         publication = (
             repo.get_publication_for_title(session, issue.title_id) if page else None
         )
         slug = publication.slug if publication else ""
         kontext = _utgavekontext(session, publication, page) if publication else None
-    # Titeln ändras av temat, så matchningen måste göras om.
+    # Titeln ändras av rubriken, så matchningen måste göras om.
     calibre_match.glom_forslag()
 
     if kontext is not None:

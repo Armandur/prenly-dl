@@ -87,12 +87,12 @@ def test_forfattaren_racker_som_stod(db, temp_env, bibliotek):
 
 def test_identisk_titel_rankas_hogst(db, temp_env, bibliotek):
     with db() as session:
-        publication = _publikation(session, monster="{år}-{nummer} - {tema}")
+        publication = _publikation(session, monster="{år}-{nummer} - {rubrik}")
         issue, _ = repo.upsert_issue(
             session, publication,
             {"uid": "1", "name": "2024-04-02", "publication_date": "2024-04-02"},
         )
-        issue.theme = "Hitta gnistan!"
+        issue.headline = "Hitta gnistan!"
         publication.catalogue_complete = True
         # Numret kräver att hela året finns.
         for index, dag in enumerate(["2024-02-05", "2024-05-27"], start=2):
@@ -286,7 +286,7 @@ def test_saknat_datum_ser_ut_som_strangen_none():
 
 def test_ar_och_nummer_ur_titeln():
     assert calibre_match.ar_och_nummer("2011-2 - Drömmare Nördar") == (2011, 2)
-    # Utan bindestreck före temat, som en del av posterna är namngivna.
+    # Utan bindestreck före rubriken, som en del av posterna är namngivna.
     assert calibre_match.ar_och_nummer("2023-1 Ylle") == (2023, 1)
     assert calibre_match.ar_och_nummer("Just for the Summer") is None
     assert calibre_match.ar_och_nummer("2024") is None
@@ -381,23 +381,23 @@ def test_kandidaten_bar_med_sig_storleksjamforelsen(db, temp_env, bibliotek):
     assert forslag[0].kandidater[0].samma_storlek is True
 
 
-def test_temat_gar_att_satta_for_hand(db, temp_env, bibliotek, monkeypatch):
+def test_rubriken_gar_att_satta_for_hand(db, temp_env, bibliotek, monkeypatch):
     """De äldre utgåvorna har inga artiklar i Prenly, bara skannade sidor."""
     issue_id = _uppsatt(db, monkeypatch)
 
     with _klient(temp_env, monkeypatch) as client:
         svar = client.post(
-            f"/issues/{issue_id}/theme", data={"theme": "  Stickspår  "},
+            f"/issues/{issue_id}/headline", data={"headline": "  Stickspår  "},
             headers={"HX-Request": "true"},
         )
 
     assert svar.status_code == 200
     with db() as session:
-        assert repo.get_issue(session, issue_id).theme == "Stickspår"
+        assert repo.get_issue(session, issue_id).headline == "Stickspår"
 
-    # Tomt fält tar bort temat igen.
+    # Tomt fält tar bort rubriken igen.
     with _klient(temp_env, monkeypatch) as client:
-        client.post(f"/issues/{issue_id}/theme", data={"theme": ""},
+        client.post(f"/issues/{issue_id}/headline", data={"headline": ""},
                     headers={"HX-Request": "true"})
     with db() as session:
-        assert repo.get_issue(session, issue_id).theme == ""
+        assert repo.get_issue(session, issue_id).headline == ""

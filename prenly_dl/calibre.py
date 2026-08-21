@@ -158,7 +158,7 @@ def build_list_argv(config: CalibreConfig) -> list[str]:
 
 # Vad titelmönstret får innehålla. Fler fält kostar bara en rad här, men
 # varje nytt är ett som kan stå fel i någons sparade mönster.
-TITELFALT = ("publikation", "utgåva", "datum", "tema", "nummer", "år")
+TITELFALT = ("publikation", "utgåva", "datum", "rubrik", "nummer", "år")
 STANDARDTITEL = "{publikation} {utgåva}"
 
 
@@ -168,7 +168,7 @@ def format_title(
     publikation: str,
     utgava: str,
     datum: str = "",
-    tema: str = "",
+    rubrik: str = "",
     nummer: int | None = None,
 ) -> str:
     """Bokens titel ur publikationens mönster.
@@ -180,7 +180,7 @@ def format_title(
         "publikation": publikation,
         "utgåva": utgava,
         "datum": datum,
-        "tema": tema,
+        "rubrik": rubrik,
         "nummer": nummer if nummer is not None else "",
         "år": datum[:4] if len(datum) >= 4 else "",
     }
@@ -190,7 +190,7 @@ def format_title(
         try:
             falt = [namn for _, namn, _, _ in Formatter().parse(kandidat) if namn]
             # Alla fält mönstret använder måste ha värde. Annars ger
-            # "{år}-{nummer} - {tema}" strängen "2024- -" den gång temat
+            # "{år}-{nummer} - {rubrik}" strängen "2024- -" den gång rubriken
             # saknas, vilket är sämre än standardtiteln.
             if any(not str(varden.get(namn, "")).strip() for namn in falt):
                 continue

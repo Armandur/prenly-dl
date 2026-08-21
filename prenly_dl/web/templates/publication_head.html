@@ -46,12 +46,12 @@
         hx-target="#pub-detalj" hx-swap="outerHTML">
     <button class="secondary">Testa uppgifter</button>
   </form>
-  {# Temat kommer med vid nedladdning, men utgåvor som aldrig hämtats
+  {# Rubriken kommer med vid nedladdning, men utgåvor som aldrig hämtats
      saknar det, och det styr titeln i Calibre. #}
-  <form method="post" action="/publications/{{ publication.id }}/themes"
-        hx-post="/publications/{{ publication.id }}/themes"
+  <form method="post" action="/publications/{{ publication.id }}/headlines"
+        hx-post="/publications/{{ publication.id }}/headlines"
         hx-target="#pub-detalj" hx-swap="outerHTML">
-    <button class="secondary outline">Hämta teman</button>
+    <button class="secondary outline">Hämta rubriker</button>
   </form>
 </div>
 </div>

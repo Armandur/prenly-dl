@@ -53,9 +53,9 @@ class JobType(str, Enum):
     DOWNLOAD = "download"
     CATALOGUE = "catalogue"
     SITE_SYNC = "site_sync"
-    # Hämtar utgåvornas tema, alltså förstasidans rubrik, för utgåvor som
+    # Hämtar utgåvornas rubrik, alltså förstasidans rubrik, för utgåvor som
     # saknar det. Ett anrop per utgåva, så det hör hemma i kön.
-    THEMES = "themes"
+    HEADLINES = "headlines"
 
 
 class Site(Base):
@@ -218,9 +218,9 @@ class Issue(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     publication_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cover_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Utgåvans tema, alltså förstasidesartikelns rubrik. Katalogen ger det
+    # Utgåvans rubrik, alltså förstasidesartikelns rubrik. Katalogen ger det
     # inte, så det fylls i vid nedladdning.
-    theme: Mapped[str] = mapped_column(String(255), default="")
+    headline: Mapped[str] = mapped_column(String(255), default="")
     status: Mapped[str] = mapped_column(String(32), default=IssueStatus.NEW.value)
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
