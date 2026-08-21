@@ -152,6 +152,34 @@ def build_list_argv(config: CalibreConfig) -> list[str]:
     return argv
 
 
+# Vad titelmönstret får innehålla. Fler fält kostar bara en rad här, men
+# varje nytt är ett som kan stå fel i någons sparade mönster.
+TITELFALT = ("publikation", "utgåva", "datum")
+STANDARDTITEL = "{publikation} {utgåva}"
+
+
+def format_title(
+    monster: str, *, publikation: str, utgava: str, datum: str = ""
+) -> str:
+    """Bokens titel ur publikationens mönster.
+
+    Ett mönster med okänt fält eller obalanserad klammer får inte fälla en
+    nedladdning som lyckats - då används standarden i stället.
+    """
+    varden = {"publikation": publikation, "utgåva": utgava, "datum": datum}
+    for kandidat in (monster.strip(), STANDARDTITEL):
+        if not kandidat:
+            continue
+        try:
+            titel = kandidat.format(**varden).strip()
+        except (KeyError, IndexError, ValueError):
+            logger.warning("Titelmönstret %r går inte att använda", kandidat)
+            continue
+        if titel:
+            return titel
+    return f"{publikation} {utgava}".strip()
+
+
 def series_index(publication_date: str | None) -> str:
     """Serienumret ur utgivningsdatumet, som 2011-03-15 -> 20110315.
 

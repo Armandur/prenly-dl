@@ -659,6 +659,7 @@ def publication_detail(request: Request, slug: str, page: int = 1):
         jobs=jobs,
         site=site,
         main_candidates=main_candidates,
+        standard_calibre_title=calibre.STANDARDTITEL,
         **kontext,
     )
 
@@ -669,6 +670,7 @@ def edit_publication(
     publication_id: int,
     name: str = Form(""),
     prefix: str = Form(""),
+    calibre_title: str = Form(""),
     folder: str = Form(""),
     watch_limit: int = Form(1),
     enabled: str = Form(""),
@@ -703,6 +705,7 @@ def edit_publication(
             return back(f"/publications/{publication.slug}")
         publication.watch_limit = max(1, watch_limit)
         publication.enabled = enabled == "on"
+        publication.calibre_title = calibre_title.strip()
         session.add(publication)
         slug = publication.slug
     besked = "Sparat"

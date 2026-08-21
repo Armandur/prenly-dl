@@ -405,3 +405,47 @@ def test_stdin_stangs_aven_utan_losenord():
         ["python3", "-c", "import sys; print('las:' + repr(sys.stdin.read()))"],
     )
     assert utdata.strip() == "las:''"
+
+
+def test_titelmonstret_ersatter_falten():
+    assert calibre.format_title(
+        "{publikation} {utgåva}", publikation="Hemslöjd", utgava="2023-2"
+    ) == "Hemslöjd 2023-2"
+    assert calibre.format_title(
+        "{utgåva}", publikation="Hemslöjd", utgava="2023-2"
+    ) == "2023-2"
+    assert calibre.format_title(
+        "Hemslöjd {datum}", publikation="H", utgava="x", datum="2023-03-27"
+    ) == "Hemslöjd 2023-03-27"
+
+
+def test_trasigt_titelmonster_faller_tillbaka_i_stallet_for_att_krascha():
+    """Mönstret skrivs för hand, och ett fel får inte fälla nedladdningen."""
+    for trasigt in ("{okänt}", "{trasig", "", "   "):
+        assert calibre.format_title(
+            trasigt, publikation="Hemslöjd", utgava="2023-2"
+        ) == "Hemslöjd 2023-2"
+
+
+def test_publikationens_monster_anvands_vid_nedladdning(db, monkeypatch):
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+
+    _koa_nedladdning(db)
+    _lyckad_nedladdning(monkeypatch)
+    _sla_pa_calibre(db)
+    with db() as session:
+        publication = repo.list_publications(session)[0]
+        publication.calibre_title = "{utgåva} ({publikation})"
+        session.add(publication)
+
+    korda = []
+    monkeypatch.setattr(
+        calibre, "run", lambda config, argv: korda.append(argv) or "Added book ids: 9"
+    )
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    add = korda[0]
+    assert add[add.index("--title") + 1] == "2026-01-01 (Tidningen)"

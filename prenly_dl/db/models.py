@@ -136,6 +136,8 @@ class Publication(Base):
     watch_limit: Mapped[int] = mapped_column(Integer, default=1)
     prefix: Mapped[str] = mapped_column(String(255), default="")
     folder: Mapped[str] = mapped_column(String(255), default="")
+    # Titelmönstret i Calibre. Tomt betyder standarden i calibre-modulen.
+    calibre_title: Mapped[str] = mapped_column(String(255), default="")
     main_publication_id: Mapped[int | None] = mapped_column(
         ForeignKey("publications.id", ondelete="SET NULL"), nullable=True
     )

@@ -16,6 +16,15 @@
     <label>Prefix på filnamn<input name="prefix" value="{{ publication.prefix }}"></label>
     <label>Mapp under utdatakatalogen<input name="folder" value="{{ publication.folder }}"></label>
   </div>
+  <label>Titel i Calibre
+    <input name="calibre_title" value="{{ publication.calibre_title }}"
+           placeholder="{{ standard_calibre_title }}">
+    <small class="muted">
+      Fälten <code>{publikation}</code>, <code>{utgåva}</code> och
+      <code>{datum}</code> ersätts. Tomt ger
+      <code>{{ standard_calibre_title }}</code>.
+    </small>
+  </label>
   <label>Bilaga till
     <select name="main_publication_id">
       <option value="">Ingen - egen publikation</option>

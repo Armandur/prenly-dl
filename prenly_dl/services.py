@@ -619,7 +619,12 @@ def _skjut_till_calibre(
         bok_id = calibre.push(
             config,
             Path(issue.file_path),
-            title=f"{publication.name} {issue.name}",
+            title=calibre.format_title(
+                publication.calibre_title,
+                publikation=publication.name,
+                utgava=issue.name,
+                datum=issue.publication_date or "",
+            ),
             authors=publication.name,
             series=publication.name,
             series_index=calibre.series_index(issue.publication_date),
