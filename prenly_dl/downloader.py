@@ -25,9 +25,9 @@ from .api import (
     IMAGE_CONTENT_TYPES,
     Credentials,
     download_media,
+    collect_pages,
     front_page_headline,
     get_issue,
-    get_page_checksums,
 )
 from .config import db_path, output_root
 from .errors import PrenlyError
@@ -215,24 +215,25 @@ def download_issue(
         logger.info("Hoppar över %s, filen finns redan", target.name)
         return DownloadResult(target, 0, skipped=True, headline=rubrik)
 
-    checksums = get_page_checksums(issue_data)
-    if not checksums:
+    sidor = collect_pages(session, creds, issue_data, title_id)
+    if not sidor:
         raise PrenlyError(f"Utgåvan {issue_uid} innehåller inga sidor att ladda ner")
 
-    total = len(checksums)
+    total = len(sidor)
     workdir = Path(tempfile.mkdtemp(prefix=f"prenly-{issue_uid}-", dir=output_dir))
     try:
         page_files: list[Path] = []
-        for index, (page_num, checksum) in enumerate(checksums.items(), start=1):
-            response = download_media(session, creds, title_id, checksum)
+        for index, sida in enumerate(sidor, start=1):
+            # Bilagornas media bor under deras egen titel, inte huvudens.
+            response = download_media(session, creds, sida.title_id, sida.checksum)
             content = response.content
             content_type = response.headers.get("content-type", "").split(";")[0].strip()
             if content_type in IMAGE_CONTENT_TYPES:
                 logger.info(
-                    "%s sida %s är %s, konverterar till PDF", stem, page_num, content_type
+                    "%s sida %s är %s, konverterar till PDF", stem, sida.nyckel, content_type
                 )
                 content = img2pdf.convert(content)
-            page_file = workdir / f"{page_num}.pdf"
+            page_file = workdir / f"{sida.nyckel}.pdf"
             page_file.write_bytes(content)
             page_files.append(page_file)
             if progress:

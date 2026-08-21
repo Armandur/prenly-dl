@@ -81,6 +81,7 @@ def _pdf_bytes(bredd):
 
 def test_download_issue_skriver_sidorna_i_ratt_ordning(tmp_path, monkeypatch):
     # Uppslagen levereras i fel ordning: sidan 10 först, sedan 2 och 1.
+    # Utan position_number är sidnumret det som bestämmer.
     issue_data = {
         "name": "2026-01-01",
         "replica_spreads": [
@@ -120,3 +121,46 @@ def test_download_issue_utan_sidor_ger_fel(tmp_path, monkeypatch):
     )
     with pytest.raises(PrenlyError):
         download_issue(None, None, 1, "42", tmp_path)
+
+
+def test_download_issue_tar_med_bilagorna(tmp_path, monkeypatch):
+    """Uppmätt: DN:s PDF hade 24 sidor när utgåvan har 64.
+
+    Del B och Del C ligger som egna utgåvor i insert_issues.
+    """
+    huvud = {
+        "name": "2026-08-21",
+        "replica_spreads": [
+            {"position_number": 1, "pages": [{"page_no": 1, "media": [{"checksum": "a1"}]}]},
+        ],
+        "insert_issues": [{"title_id": 2359, "issue_uid": "b"}],
+    }
+    bilaga = {
+        "replica_spreads": [
+            {"position_number": 1, "pages": [{"page_no": 1, "media": [{"checksum": "b1"}]}]},
+        ]
+    }
+    breddar = {"a1": 11, "b1": 22}
+    hamtade = []
+
+    import prenly_dl.api as api
+
+    def _get_issue(session, creds, title_id, uid):
+        return bilaga if str(uid) == "b" else huvud
+
+    monkeypatch.setattr(downloader, "get_issue", _get_issue)
+    monkeypatch.setattr(api, "get_issue", _get_issue)
+
+    def _media(session, creds, title_id, checksum):
+        hamtade.append((title_id, checksum))
+        return _Svar(_pdf_bytes(breddar[checksum]))
+
+    monkeypatch.setattr(downloader, "download_media", _media)
+
+    result = download_issue(None, None, 2357, "42", tmp_path)
+
+    assert result.page_count == 2, "bilagans sida ska med"
+    sidbreddar = [round(float(p.mediabox.width)) for p in PdfReader(result.path).pages]
+    assert sidbreddar == [11, 22], "huvuddelen först, sedan bilagan"
+    # Bilagans media hämtas under dess egen titel.
+    assert hamtade == [(2357, "a1"), (2359, "b1")]

@@ -14,7 +14,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .errors import PrenlyHTTPError, raise_for_rpc_error
+from .errors import PrenlyError, PrenlyHTTPError, raise_for_rpc_error
 
 logger = logging.getLogger(__name__)
 
@@ -181,18 +181,83 @@ def get_issue(
 
 
 def get_page_checksums(issue_data: dict) -> dict[str, str]:
-    """Sidnummer (nollutfyllt) -> checksumma, i läsordning.
+    """Nyckel i läsordning -> checksumma.
 
-    Sidnumren fylls ut till fem tecken så att lexikal sortering matchar
-    numerisk, och uppslagen sorteras explicit eftersom API:t kan leverera
-    dem i annan ordning än läsordningen.
+    Nyckeln bygger på uppslagets globala position och sidans plats i
+    uppslaget, inte på sidnumret. En tidning med flera delar börjar om
+    numreringen i varje del: Expressen 2026-08-21 har tre delar med
+    sidorna 1-32, 1-12 och 1-20, alltså tre sidor som heter 1. Med
+    sidnumret som nyckel skrev delarna över varandra - hälften av
+    sidorna försvann och förstasidan blev sista delens.
+
+    Nycklarna nollutfylls så att lexikal sortering matchar numerisk:
+    de blir filnamn, och filordningen avgör ordningen i PDF:en.
     """
-    checksums: dict[str, str] = {}
-    for spread in issue_data.get("replica_spreads", []):
-        for page in spread.get("pages", []):
-            page_num = str(int(page["page_no"])).zfill(5)
-            checksums[page_num] = page["media"][0]["checksum"]
-    return dict(sorted(checksums.items(), key=lambda kv: int(kv[0])))
+    spreads = issue_data.get("replica_spreads", [])
+    poster: list[tuple[int, int, str]] = []
+    for ordning, spread in enumerate(spreads, start=1):
+        try:
+            position = int(spread.get("position_number"))
+        except (TypeError, ValueError):
+            # Utan position får sidnumret bestämma. Det duger så länge
+            # utgåvan har en enda del, och API:t kan leverera uppslagen i
+            # annan ordning än läsordningen.
+            position = 0
+        for index, page in enumerate(spread.get("pages", [])):
+            if position:
+                poster.append((position, index, page["media"][0]["checksum"]))
+            else:
+                poster.append((int(page["page_no"]), index, page["media"][0]["checksum"]))
+    poster.sort(key=lambda post: (post[0], post[1]))
+    return {f"{pos:05d}-{index:02d}": checksum for pos, index, checksum in poster}
+
+
+@dataclass(frozen=True)
+class Sida:
+    """En sida att hämta: nyckeln ger ordningen, titeln var den bor."""
+
+    nyckel: str
+    title_id: int
+    checksum: str
+
+
+def collect_pages(
+    session: requests.Session,
+    creds: Credentials,
+    issue_data: dict,
+    title_id: int,
+) -> list[Sida]:
+    """Alla sidor i en utgåva, bilagorna inräknade och i läsordning.
+
+    En utgåva kan ha bilagor som är egna utgåvor med eget title_id och
+    uid - Dagens Nyheter 2026-08-21 har Del B och Del C så. De ligger i
+    insert_issues och saknades helt i den nedladdade PDF:en, som bara
+    innehöll huvuddelens 24 sidor.
+
+    Bilagornas media bor under deras egen titel, så varje sida bär sitt
+    title_id vidare till CDN-anropet.
+    """
+    sidor = [
+        Sida(f"0-{nyckel}", title_id, checksum)
+        for nyckel, checksum in get_page_checksums(issue_data).items()
+    ]
+    for ordning, bilaga in enumerate(issue_data.get("insert_issues") or [], start=1):
+        bilaga_titel = bilaga.get("title_id")
+        bilaga_uid = bilaga.get("issue_uid") or bilaga.get("issue_id")
+        if not bilaga_titel or not bilaga_uid:
+            logger.warning("Hoppar över bilaga utan titel eller uid: %s", bilaga)
+            continue
+        try:
+            data = get_issue(session, creds, int(bilaga_titel), str(bilaga_uid))
+        except PrenlyError as error:
+            # Hellre huvuddelen utan bilaga än ingen utgåva alls.
+            logger.warning("Kunde inte hämta bilaga %s: %s", bilaga_uid, error)
+            continue
+        sidor += [
+            Sida(f"{ordning}-{nyckel}", int(bilaga_titel), checksum)
+            for nyckel, checksum in get_page_checksums(data).items()
+        ]
+    return sidor
 
 
 def front_page_headline(issue_data: dict) -> str:
