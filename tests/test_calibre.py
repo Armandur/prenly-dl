@@ -87,6 +87,10 @@ def test_serienummer_ur_utgivningsdatum():
         ("Added book ids: 1234", 1234),
         ("Added book ids: 12, 13", 12),
         ("Added book id: 7\n", 7),
+        # calibredb följer miljöns språk. Verifierat mot en svensk
+        # calibre 9.11 som svarade så här, vilket kostade ett bok-id.
+        ("Tillagda bokidentifierare: 1775", 1775),
+        ("Tillagda bokidentifierare: 12, 13", 12),
         ("Backend not available", None),
         ("", None),
     ],
@@ -374,6 +378,16 @@ def test_omslaget_foljer_med_till_calibre(db, monkeypatch, tmp_path):
 
     add = korda[0]
     assert add[add.index("--cover") + 1] == str(omslag)
+
+
+def test_sprakmiljon_tvingar_engelska():
+    """Utskriften är enda vägen till bok-id:t, och den följer språket."""
+    assert calibre.SPRAKMILJO["CALIBRE_OVERRIDE_LANG"] == "en"
+    utdata = calibre.run(
+        calibre.CalibreConfig(enabled=True, url="http://a", library="b"),
+        ["sh", "-c", "echo $LC_ALL $CALIBRE_OVERRIDE_LANG"],
+    )
+    assert utdata.strip() == "C en"
 
 
 def test_stdin_stangs_aven_utan_losenord():

@@ -12,6 +12,7 @@ märker jobbet.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -35,6 +36,14 @@ TIMEOUT = 300
 # inte dokumenterat och har varierat mellan versioner, så parsningen är
 # tolerant och får misslyckas utan att fälla nedladdningen.
 ID_MONSTER = re.compile(r"Added book ids?:\s*([0-9,\s]+)", re.IGNORECASE)
+# Reserv för när utskriften inte är engelsk. Verifierat 2026-08-21: en
+# svensk calibre svarade "Tillagda bokidentifierare: 1775", och miljön
+# nedan hann inte hjälpa eftersom språket kom från serversidan.
+ID_RESERV = re.compile(r":\s*([0-9]+(?:\s*,\s*[0-9]+)*)\s*$")
+
+# calibredb följer miljöns språk, och utskriften är det enda sättet att
+# få reda på bok-id:t. Engelska är det som parsas.
+SPRAKMILJO = {"CALIBRE_OVERRIDE_LANG": "en", "LC_ALL": "C", "LANG": "C"}
 
 
 class CalibreError(RuntimeError):
@@ -158,6 +167,11 @@ def series_index(publication_date: str | None) -> str:
 def parse_added_id(utdata: str) -> int | None:
     """Bok-id:t ur calibredb:s utskrift, eller None om det inte gick att läsa."""
     traff = ID_MONSTER.search(utdata)
+    if traff is None:
+        for rad in reversed(utdata.strip().splitlines()):
+            traff = ID_RESERV.search(rad.strip())
+            if traff:
+                break
     if not traff:
         return None
     forsta = traff.group(1).split(",")[0].strip()
@@ -175,6 +189,7 @@ def run(config: CalibreConfig, argv: list[str]) -> str:
             input=f"{config.password}\n" if config.password else "",
             capture_output=True,
             text=True,
+            env={**os.environ, **SPRAKMILJO},
             timeout=TIMEOUT,
             check=False,
         )
