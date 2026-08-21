@@ -413,6 +413,17 @@ def issues_without_calibre(session: Session, title_id: int) -> list[Issue]:
     )
 
 
+def issues_with_calibre_id(session: Session, title_id: int) -> list[Issue]:
+    """Titelns utgåvor som är kopplade till en bok i Calibre."""
+    return list(
+        session.execute(
+            select(Issue).where(
+                Issue.title_id == title_id, Issue.calibre_id.is_not(None)
+            ).order_by(Issue.publication_date.desc())
+        ).unique().scalars()
+    )
+
+
 def calibre_ids(session: Session) -> list[int]:
     """Alla bok-id prenly-dl känner till."""
     return list(
@@ -581,6 +592,19 @@ def enqueue_headlines(session: Session, publication_id: int) -> Job | None:
         return None
     job = Job(type=JobType.HEADLINES.value, status=JobStatus.QUEUED.value,
               publication_id=publication_id)
+    session.add(job)
+    session.flush()
+    return job
+
+
+def enqueue_enrich(session: Session) -> Job | None:
+    pagaende = session.execute(select(Job).where(
+        Job.type == JobType.ENRICH.value,
+        Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+    )).first()
+    if pagaende:
+        return None
+    job = Job(type=JobType.ENRICH.value, status=JobStatus.QUEUED.value)
     session.add(job)
     session.flush()
     return job

@@ -1,6 +1,44 @@
 <div id="calibre-forslag">
 {% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
 
+{% if berikningar %}
+  {% set falt = berikningar|map(attribute="falt")|map("list")|sum(start=[]) %}
+  <article class="berikning">
+    <strong>{{ berikningar|length }} kopplade böcker saknar uppgifter vi har.</strong>
+    <p class="muted">
+      {% for namn, etikett in [("pubdate", "utgivningsdatum"), ("series", "serie"), ("series_index", "serienummer")] %}
+        {% if falt.count(namn) %}{{ falt.count(namn) }} får {{ etikett }}{% if not loop.last %} · {% endif %}{% endif %}
+      {% endfor %}
+      <br>Bara tomma fält fylls i - det som redan står i Calibre rörs inte.
+    </p>
+    <details>
+      <summary class="muted">Visa vad som skrivs</summary>
+      <div class="scroll-x">
+      <table>
+        <thead><tr><th>Utgåva</th><th>Bok</th><th>Skrivs</th></tr></thead>
+        <tbody>
+        {% for post in berikningar %}
+          <tr>
+            <td>{{ post.utgava }}</td>
+            <td class="muted">{{ post.book_id }} {{ post.boktitel }}</td>
+            <td class="muted">
+              {% for namn, varde in post.falt.items() %}{{ namn }} = {{ varde }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </details>
+    <div class="card-actions">
+      <form method="post" action="/calibre/enrich"
+            hx-post="/calibre/enrich" hx-target="#calibre-forslag" hx-swap="outerHTML">
+        <button>Fyll på uppgifterna</button>
+      </form>
+    </div>
+  </article>
+{% endif %}
+
 {% if fel %}
   <article class="flash flash-error">{{ fel }}</article>
 {% elif not konfigurerad %}

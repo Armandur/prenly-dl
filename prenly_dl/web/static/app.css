@@ -359,3 +359,10 @@ button.htmx-request::after {
   flex: 0 0 auto; width: auto; white-space: nowrap;
   padding: 0.15rem 0.5rem; font-size: 0.75rem;
 }
+
+/* Påfyllningen står överst på matchningssidan och ska synas som en egen
+   sak, inte som ännu ett matchningskort. */
+.berikning { border-left: 4px solid var(--pico-primary); }
+.berikning .card-actions { margin-top: 1rem; }
+.berikning details { margin: 0.75rem 0 0; }
+.berikning table { margin-bottom: 0; font-size: 0.85rem; }

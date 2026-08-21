@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import calibre_api
-from .calibre import CalibreConfig, CalibreError, format_title
+from .calibre import CalibreConfig, CalibreError, format_title, series_index
 from .db import repository as repo
 from .db.models import Issue, Publication
 
@@ -313,6 +313,59 @@ def status_per_utgava(
         elif issue.id in med_forslag:
             status[issue.id] = CalibreStatus(har_forslag=True)
     return status
+
+
+@dataclass
+class Berikning:
+    """Metadata prenly-dl har och boken i Calibre saknar."""
+
+    issue_id: int
+    book_id: int
+    utgava: str
+    boktitel: str
+    falt: dict[str, str]
+
+
+def berikningar(session, config: CalibreConfig) -> list[Berikning]:
+    """Kopplade böcker som saknar uppgifter vi redan har.
+
+    Bara tomma fält fylls i. Ett värde som står i Calibre är någons val
+    och ska inte skrivas över av en automatik.
+    """
+    if not config.configured:
+        return []
+    bibliotek = calibre_api.fetch_library(config)
+
+    resultat: list[Berikning] = []
+    for publication in repo.list_publications(session):
+        nummer_per_datum = repo.issue_numbers_by_date(session, publication.title)
+        for issue in repo.issues_with_calibre_id(session, publication.title_id):
+            bok = bibliotek.bok(issue.calibre_id)
+            if bok is None:
+                continue
+            falt: dict[str, str] = {}
+            if issue.publication_date and not calibre_api.bok_datum(bok):
+                falt["pubdate"] = issue.publication_date
+            # Serienumret hör ihop med serien: utan serie betyder det
+            # ingenting, och med serie är det redan satt.
+            if not bok.get("series"):
+                falt["series"] = publication.name
+                index = series_index(
+                    issue.publication_date, nummer_per_datum.get(issue.publication_date)
+                )
+                if index:
+                    falt["series_index"] = index
+            if falt:
+                resultat.append(
+                    Berikning(
+                        issue_id=issue.id,
+                        book_id=issue.calibre_id,
+                        utgava=issue.name,
+                        boktitel=str(bok.get("title") or ""),
+                        falt=falt,
+                    )
+                )
+    return resultat
 
 
 def tillatna_bocker(session, config: CalibreConfig) -> set[int]:

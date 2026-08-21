@@ -401,3 +401,121 @@ def test_rubriken_gar_att_satta_for_hand(db, temp_env, bibliotek, monkeypatch):
                     headers={"HX-Request": "true"})
     with db() as session:
         assert repo.get_issue(session, issue_id).headline == ""
+
+
+# --------------------------------------------------------------------------
+# Påfyllning av uppgifter Calibre saknar
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def magra_bocker(monkeypatch):
+    """Böcker som saknar det prenly-dl har, och en som har allt."""
+    utan_allt = _bok("2024-2 - Hitta gnistan!", "Hemslöjd", "")
+    utan_serie = _bok("2023-2 - Hantverk & hälsa", "Hemslöjd", "2023-03-27")
+    komplett = _bok("2022-3 - Dra något gammalt", "Hemslöjd", "2022-05-25")
+    komplett["series"] = "Egen serie"
+    komplett["series_index"] = 7.0
+    bocker = {1541: utan_allt, 1384: utan_serie, 1189: komplett}
+    monkeypatch.setattr(
+        calibre_api, "fetch_library",
+        lambda config, force=False: calibre_api.Bibliotek(bocker, 0.0),
+    )
+    calibre_match.glom_forslag()
+    return bocker
+
+
+def _koppla(session, publication, datum, book_id, uid=None):
+    issue, _ = repo.upsert_issue(
+        session, publication,
+        {"uid": uid or datum, "name": datum, "publication_date": datum},
+    )
+    issue.calibre_id = book_id
+    session.flush()
+    return issue
+
+
+def test_bara_tomma_falt_fylls_i(db, temp_env, magra_bocker):
+    """Ett värde som står i Calibre är någons val, inte något att skriva över."""
+    with db() as session:
+        publication = _publikation(session)
+        publication.title.catalogue_complete = True
+        _koppla(session, publication, "2024-04-02", 1541)
+        _koppla(session, publication, "2023-03-27", 1384)
+        _koppla(session, publication, "2022-05-25", 1189)
+        poster = {p.book_id: p.falt for p in calibre_match.berikningar(session, KONFIG)}
+
+    # Saknar både datum och serie.
+    assert poster[1541]["pubdate"] == "2024-04-02"
+    assert poster[1541]["series"] == "Tidningen Hemslöjd"
+    # Har datum, saknar serie.
+    assert "pubdate" not in poster[1384]
+    assert poster[1384]["series"] == "Tidningen Hemslöjd"
+    # Har allt: ska inte röras.
+    assert 1189 not in poster
+
+
+def test_serienumret_foljer_serien_och_inte_tvartom(db, temp_env, magra_bocker):
+    """Indexet skrivs bara när serien skrivs: utan serie betyder det inget.
+
+    Går numret inte att räkna ut, för att katalogen är ofullständig,
+    används datumet som tal - samma regel som vid nedladdning.
+    """
+    with db() as session:
+        publication = _publikation(session)
+        _koppla(session, publication, "2024-04-02", 1541)
+        publication.title.catalogue_complete = False
+        session.flush()
+        utan_katalog = {
+            p.book_id: p.falt for p in calibre_match.berikningar(session, KONFIG)
+        }
+        publication.title.catalogue_complete = True
+        session.flush()
+        med_katalog = {
+            p.book_id: p.falt for p in calibre_match.berikningar(session, KONFIG)
+        }
+
+    assert utan_katalog[1541]["series_index"] == "20240402"
+    assert med_katalog[1541]["series_index"] == "2024.1"
+    # Boken som redan har en serie får varken serie eller index.
+    with db() as session:
+        publication = repo.list_publications(session)[0]
+        _koppla(session, publication, "2022-05-25", 1189)
+        poster = {p.book_id: p.falt for p in calibre_match.berikningar(session, KONFIG)}
+    assert "series_index" not in poster.get(1189, {})
+
+
+def test_paafyllningsjobbet_skriver_ett_anrop_per_bok(db, temp_env, magra_bocker, monkeypatch):
+    from prenly_dl import services
+    from prenly_dl.db.models import Job, JobStatus
+
+    with db() as session:
+        publication = _publikation(session)
+        publication.title.catalogue_complete = True
+        _koppla(session, publication, "2024-04-02", 1541)
+        _koppla(session, publication, "2023-03-27", 1384)
+        repo.set_setting(session, calibre.ENABLED_KEY, "on")
+        repo.set_setting(session, calibre.URL_KEY, "http://tervo2:8881")
+        repo.set_setting(session, calibre.LIBRARY_KEY, "ebooks")
+        job = repo.enqueue_enrich(session)
+        job_id = job.id
+
+    korda = []
+    monkeypatch.setattr(calibre, "run", lambda config, argv: korda.append(argv) or "")
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    with db() as session:
+        job = session.get(Job, job_id)
+        assert job.status == JobStatus.DONE.value
+        assert "2 böcker fick uppgifter" in job.message
+
+    # Ett anrop per bok, inte ett per fält.
+    assert len(korda) == 2
+    assert all(argv[1] == "set_metadata" for argv in korda)
+    for_1541 = next(a for a in korda if "1541" in a)
+    assert "pubdate:2024-04-02" in for_1541
+    assert "series:Tidningen Hemslöjd" in for_1541
+    # Årets första utgåva i testdatat, alltså 2024.1.
+    assert "series_index:2024.1" in for_1541

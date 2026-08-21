@@ -56,6 +56,9 @@ class JobType(str, Enum):
     # Hämtar utgåvornas rubrik, alltså förstasidans rubrik, för utgåvor som
     # saknar det. Ett anrop per utgåva, så det hör hemma i kön.
     HEADLINES = "headlines"
+    # Fyller på uppgifter som saknas på böcker i Calibre. Ett anrop per
+    # bok, så det hör hemma i kön.
+    ENRICH = "enrich"
 
 
 class Site(Base):

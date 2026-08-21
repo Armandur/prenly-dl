@@ -18,7 +18,7 @@ from .api import (
     get_titles,
 )
 from .config import output_root
-from . import calibre
+from . import calibre, calibre_api, calibre_match
 from .covers import fetch_and_cache_cover
 from .db import repository as repo
 from .db.models import (
@@ -553,6 +553,46 @@ def run_headlines_job(session: Session, job: Job) -> str:
     return ", ".join(delar)
 
 
+def run_enrich_job(session: Session, job: Job) -> str:
+    """Fyll på uppgifter som saknas på kopplade böcker i Calibre.
+
+    Bara tomma fält skrivs. Ett värde som redan står där är någons val.
+    """
+    config = calibre.load_config(session)
+    if not config.configured:
+        raise PrenlyError("Calibre är inte inställt")
+
+    poster = calibre_match.berikningar(session, config)
+    if not poster:
+        return "Inga böcker saknar uppgifter vi har"
+
+    skrivna, fel = 0, 0
+    for gjort, post in enumerate(poster, start=1):
+        try:
+            calibre.run(
+                config, calibre.build_metadata_argv(config, post.book_id, post.falt)
+            )
+        except calibre.CalibreError as error:
+            # En bok som inte går att skriva ska inte fälla resten.
+            logger.warning("Kunde inte berika bok %s: %s", post.book_id, error)
+            fel += 1
+            continue
+        skrivna += 1
+        if gjort % 10 == 0 or gjort == len(poster):
+            # Förloppet skrivs i en egen session, så den egna måste vara
+            # tömd först. Annars håller den skrivlåset.
+            session.commit()
+            repo.update_job_progress(job.id, gjort, len(poster))
+
+    # Biblioteket har ändrats, så nästa läsning ska gå till servern.
+    calibre_api.glom_cache()
+    calibre_match.glom_forslag()
+    besked = f"{skrivna} böcker fick uppgifter"
+    if fel:
+        besked += f", {fel} gick inte att skriva"
+    return besked
+
+
 def run_download_job(session: Session, job: Job) -> str:
     """Ladda ner utgåvan som jobbet pekar på."""
     issue: Issue | None = repo.get_issue(session, job.issue_id) if job.issue_id else None
@@ -712,6 +752,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_site_sync_job(session, job)
         elif job.type == JobType.HEADLINES.value:
             summary = run_headlines_job(session, job)
+        elif job.type == JobType.ENRICH.value:
+            summary = run_enrich_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

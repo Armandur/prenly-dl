@@ -133,17 +133,30 @@ def build_add_format_argv(
     return argv
 
 
-def build_pubdate_argv(
-    config: CalibreConfig, calibre_id: int, pubdate: str
+def build_metadata_argv(
+    config: CalibreConfig, calibre_id: int, falt: dict[str, str]
 ) -> list[str]:
-    """Utgivningsdatumet går inte att sätta i add, bara efteråt."""
+    """Sätt ett eller flera metadatafält på en bok.
+
+    Verifierat mot en riktig server att flera --field går i samma anrop,
+    så en berikning kostar ett anrop per bok och inte ett per fält.
+    """
     argv = [BINARY, "set_metadata", "--with-library", config.with_library]
     if config.username:
         argv += ["--username", config.username]
         if config.password:
             argv += ["--password", "<stdin>"]
-    argv += ["--field", f"pubdate:{pubdate}", str(calibre_id)]
+    for namn, varde in falt.items():
+        argv += ["--field", f"{namn}:{varde}"]
+    argv.append(str(calibre_id))
     return argv
+
+
+def build_pubdate_argv(
+    config: CalibreConfig, calibre_id: int, pubdate: str
+) -> list[str]:
+    """Utgivningsdatumet går inte att sätta i add, bara efteråt."""
+    return build_metadata_argv(config, calibre_id, {"pubdate": pubdate})
 
 
 def build_list_argv(config: CalibreConfig) -> list[str]:
