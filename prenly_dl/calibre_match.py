@@ -9,6 +9,7 @@ kandidaterna rankas och användaren avgör.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,8 +28,18 @@ logger = logging.getLogger(__name__)
 CACHE_SEKUNDER = 300
 
 POANG_TITEL = 100
+# År och nummer ur bokens egen titel. Räknas bara tillsammans med
+# författarstöd: kombinationen är unik inom en tidning, inte i ett
+# bibliotek med flera.
+POANG_ARNUMMER = 60
 POANG_FORFATTARE = 30
 POANG_DATUM = 10
+
+# Namngivning på formen "2011-2 - Drömmare Nördar och Visionärer" eller
+# "2023-1 Ylle". Uppmätt mot biblioteket: 82 böcker följer den, samtliga
+# Hemslöjd, och 179 böcker saknar utgivningsdatum helt - för dem är det
+# här enda vägen till en matchning.
+ARNUMMER = re.compile(r"^(\d{4})-(\d{1,2})\b")
 # Enbart samma utgivningsdatum är inget tecken alls: uppmätt mot ett
 # bibliotek på 1167 böcker gav datummatchning 434 kandidater, nästan alla
 # romaner som råkade ges ut samma dag. Med tröskeln blev det 12, samtliga
@@ -64,17 +75,42 @@ def _lokal_storlek(issue: Issue) -> int | None:
         return None
 
 
-def _poang(vantad_titel: str, publikation: str, datum: str, bok: dict) -> int:
+def ar_och_nummer(titel: str) -> tuple[int, int] | None:
+    """År och nummer ur en boktitel, om den är namngiven på det viset."""
+    traff = ARNUMMER.match(titel.strip())
+    if not traff:
+        return None
+    return int(traff.group(1)), int(traff.group(2))
+
+
+def _poang(
+    vantad_titel: str,
+    publikation: str,
+    datum: str,
+    bok: dict,
+    arnummer: tuple[int, int] | None = None,
+) -> int:
     poang = 0
     titel = str(bok.get("title") or "").strip()
     if titel and titel.casefold() == vantad_titel.casefold():
         poang += POANG_TITEL
+
     forfattare = calibre_api.bok_forfattare(bok)
+    samma_utgivare = False
     if forfattare and publikation:
         # "Hemslöjd" mot "Tidningen Hemslöjd": den ena rymmer den andra.
         a, b = forfattare.casefold(), publikation.casefold()
-        if a in b or b in a:
-            poang += POANG_FORFATTARE
+        samma_utgivare = a in b or b in a
+    if samma_utgivare:
+        poang += POANG_FORFATTARE
+
+    # År och nummer är unikt inom EN tidning, inte över biblioteket.
+    # Utan författarkravet matchade Sundsvalls Tidnings femte utgåva 2024
+    # mot Hemslöjds "2024-5 - Slöjd & bildning".
+    if samma_utgivare and arnummer:
+        if ar_och_nummer(titel) == arnummer:
+            poang += POANG_ARNUMMER
+
     if datum and calibre_api.bok_datum(bok) == datum:
         poang += POANG_DATUM
     return poang
@@ -114,14 +150,19 @@ def find_candidates(
     bibliotek = calibre_api.fetch_library(config)
     per_datum: dict[str, list[dict]] = {}
     per_titel: dict[str, list[dict]] = {}
+    # Böcker som saknar utgivningsdatum går bara att nå den här vägen.
+    per_arnummer: dict[tuple[int, int], list[dict]] = {}
     for book_id, bok in bibliotek.bocker.items():
         bok = {**bok, "id": book_id}
         datum = calibre_api.bok_datum(bok)
         if datum:
             per_datum.setdefault(datum, []).append(bok)
-        titel = str(bok.get("title") or "").strip().casefold()
+        titel = str(bok.get("title") or "").strip()
         if titel:
-            per_titel.setdefault(titel, []).append(bok)
+            per_titel.setdefault(titel.casefold(), []).append(bok)
+        nyckel = ar_och_nummer(titel)
+        if nyckel:
+            per_arnummer.setdefault(nyckel, []).append(bok)
 
     forslag: list[Forslag] = []
     for publication in repo.list_publications(session):
@@ -130,9 +171,18 @@ def find_candidates(
             # Grovsållning först: numret kostar en fråga per utgåva, och de
             # allra flesta utgåvor har ingen kandidat alls.
             grovt = per_datum.get(datum, [])
+            # Numret kostar en fråga per utgåva, men det är enda vägen till
+            # böcker utan utgivningsdatum, så det räcker inte att sålla på
+            # datum här.
+            nummer = repo.issue_number_in_year(session, issue)
+            arnummer = (
+                (int(datum[:4]), nummer)
+                if nummer is not None and datum[:4].isdigit()
+                else None
+            )
+            grovt = grovt + per_arnummer.get(arnummer, []) if arnummer else grovt
             if not grovt and not issue.theme:
                 continue
-            nummer = repo.issue_number_in_year(session, issue)
             vantad = format_title(
                 publication.calibre_title,
                 publikation=publication.name,
@@ -154,7 +204,7 @@ def find_candidates(
                     forfattare=calibre_api.bok_forfattare(bok),
                     datum=calibre_api.bok_datum(bok),
                     storlek=calibre_api.bok_storlek(bok),
-                    poang=_poang(vantad, publication.name, datum, bok),
+                    poang=_poang(vantad, publication.name, datum, bok, arnummer),
                 )
                 for bok in traffar.values()
             ]

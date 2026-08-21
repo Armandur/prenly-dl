@@ -122,10 +122,14 @@ def bok_datum(bok: dict) -> str:
     Calibre svarar med full tidsstämpel, 2024-04-02T00:00:00+00:00, och
     använder år 0101 för "inget datum".
     """
-    varde = str(bok.get("pubdate") or "")[:10]
-    if not varde or varde.startswith("0101"):
+    ratt = bok.get("pubdate")
+    # Bulksvaret serialiserar saknat datum som strängen "None", inte som
+    # JSON-null. Uppmätt: 179 av 1167 böcker.
+    if ratt in (None, "None", ""):
         return ""
-    return varde
+    varde = str(ratt)[:10]
+    # Calibre använder år 0101 för "inget datum".
+    return "" if varde.startswith("0101") else varde
 
 
 def bok_storlek(bok: dict) -> int | None:

@@ -21,7 +21,8 @@ def _bok(titel, forfattare, datum, storlek=1000):
     return {
         "title": titel,
         "authors": [forfattare],
-        "pubdate": f"{datum}T00:00:00+00:00",
+        # Calibre serialiserar saknat datum som strängen "None".
+        "pubdate": f"{datum}T00:00:00+00:00" if datum else "None",
         "format_metadata": {"pdf": {"size": storlek}},
     }
 
@@ -268,3 +269,84 @@ def test_ersatt_vagrar_en_fil_utanfor_utdatakatalogen(
     assert "finns inte i utdatakatalogen" in svar.text
     with db() as session:
         assert repo.get_issue(session, issue_id).calibre_id is None
+
+
+# --------------------------------------------------------------------------
+# År och nummer ur bokens egen titel
+# --------------------------------------------------------------------------
+
+
+def test_saknat_datum_ser_ut_som_strangen_none():
+    """Uppmätt: 179 av 1167 böcker hade pubdate satt till 'None'."""
+    assert calibre_api.bok_datum({"pubdate": "None"}) == ""
+    assert calibre_api.bok_datum({"pubdate": None}) == ""
+    assert calibre_api.bok_datum({"pubdate": "0101-01-01T00:00:00+00:00"}) == ""
+    assert calibre_api.bok_datum({"pubdate": "2024-04-02T00:00:00+00:00"}) == "2024-04-02"
+
+
+def test_ar_och_nummer_ur_titeln():
+    assert calibre_match.ar_och_nummer("2011-2 - Drömmare Nördar") == (2011, 2)
+    # Utan bindestreck före temat, som en del av posterna är namngivna.
+    assert calibre_match.ar_och_nummer("2023-1 Ylle") == (2023, 1)
+    assert calibre_match.ar_och_nummer("Just for the Summer") is None
+    assert calibre_match.ar_och_nummer("2024") is None
+
+
+@pytest.fixture
+def gamla_bocker(monkeypatch):
+    """Böcker utan utgivningsdatum, namngivna med år och nummer."""
+    bocker = {
+        1067: _bok("2014-1 - Färg", "Hemslöjd", ""),
+        1065: _bok("2014-2 - Eldsjälar", "Hemslöjd", ""),
+        1066: _bok("2014-3 - Björk", "Hemslöjd", ""),
+    }
+    monkeypatch.setattr(
+        calibre_api, "fetch_library",
+        lambda config, force=False: calibre_api.Bibliotek(bocker, 0.0),
+    )
+    calibre_match.glom_forslag()
+    return bocker
+
+
+def _ar_2014(session, publication):
+    """Hemslöjds sex nummer 2014, med uppmätta utgivningsdatum."""
+    datum = ["2014-01-29", "2014-03-26", "2014-05-27",
+             "2014-08-13", "2014-10-01", "2014-11-26"]
+    for index, dag in enumerate(datum):
+        repo.upsert_issue(
+            session, publication,
+            {"uid": str(index), "name": dag, "publication_date": dag},
+        )
+    publication.catalogue_complete = True
+    session.flush()
+
+
+def test_bocker_utan_datum_nas_via_ar_och_nummer(db, temp_env, gamla_bocker):
+    """Enda vägen till de äldre posterna: de saknar utgivningsdatum helt."""
+    with db() as session:
+        publication = _publikation(session)
+        _ar_2014(session, publication)
+        forslag = calibre_match.find_candidates(session, KONFIG)
+
+    traffar = {
+        f.issue.publication_date: f.kandidater[0].titel for f in forslag
+    }
+    assert traffar == {
+        "2014-01-29": "2014-1 - Färg",
+        "2014-03-26": "2014-2 - Eldsjälar",
+        "2014-05-27": "2014-3 - Björk",
+    }
+
+
+def test_ar_och_nummer_kraver_att_utgivaren_stammer(db, temp_env, gamla_bocker):
+    """Regression: Sundsvalls femte utgåva 2024 matchade Hemslöjds 2024-5.
+
+    År och nummer är unikt inom en tidning, inte i ett bibliotek med
+    flera. Utan författarkravet blev det 46 falska förslag.
+    """
+    with db() as session:
+        publication = _publikation(session, namn="Sundsvalls Tidning")
+        _ar_2014(session, publication)
+        forslag = calibre_match.find_candidates(session, KONFIG)
+
+    assert forslag == []

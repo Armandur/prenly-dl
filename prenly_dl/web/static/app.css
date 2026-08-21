@@ -283,6 +283,11 @@ progress { margin: 0; width: 8rem; }
 }
 .matchning .card-head { align-items: flex-start; }
 .matchning .cover { width: 70px; height: 96px; }
+/* Knappraden satt tätt mot omslagen. Marginalen ligger på raden och inte
+   på det som råkar stå ovanför, eftersom storleksvarningen bara finns
+   ibland. */
+.matchning .card-actions { margin-top: 1rem; }
+.matchning .kortbesked { margin: 1rem 0 0; }
 
 @media (max-width: 60rem) {
   .matchning-sidor { grid-template-columns: 1fr; gap: 1rem; }
