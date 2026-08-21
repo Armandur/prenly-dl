@@ -109,6 +109,36 @@ def fetch_and_cache_cover(
     return target
 
 
+def calibre_cover_path(book_id: int) -> Path:
+    """Cachefil för ett Calibre-omslag.
+
+    Namnet kan inte krocka med Prenlys omslag, som heter <titel-id>-<checksumma>.
+    """
+    return cover_cache_root() / f"calibre-{int(book_id)}.jpg"
+
+
+def cached_calibre_cover(book_id: int) -> Path | None:
+    path = calibre_cover_path(book_id)
+    return path if path.is_file() else None
+
+
+def store_calibre_cover(book_id: int, data: bytes) -> Path:
+    """Spara ett hämtat omslag. En vy med 80 rader ska inte hämta om dem."""
+    path = calibre_cover_path(book_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        bild = Image.open(BytesIO(data))
+        bild = bild.convert("RGB")
+        if bild.width > MAX_WIDTH:
+            hojd = round(bild.height * MAX_WIDTH / bild.width)
+            bild = bild.resize((MAX_WIDTH, hojd), Image.LANCZOS)
+        bild.save(path, "JPEG", quality=JPEG_QUALITY)
+    except (UnidentifiedImageError, OSError):
+        # Hellre originalet än inget omslag alls.
+        path.write_bytes(data)
+    return path
+
+
 def purge_unused_covers(giltiga: set[str]) -> int:
     """Ta bort cachade omslag som ingen utgåva längre pekar på."""
     root = cover_cache_root()

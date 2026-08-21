@@ -272,3 +272,18 @@ progress { margin: 0; width: 8rem; }
 @media (prefers-color-scheme: dark) {
   #confirm-warning { background: #4d1d1d; color: #f0c9c9; }
 }
+
+/* Matchningsvyn: prenly-dl och Calibre sida vid sida, så skillnaderna
+   syns utan att man behöver leta. Under 60rem staplas de i stället. */
+.matchning { margin-bottom: 1.5rem; }
+.matchning-sidor { display: grid; gap: 1.5rem; grid-template-columns: 1fr 1fr; }
+.matchning-rubrik {
+  margin: 0 0 0.5rem; font-size: 0.75rem; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--pico-muted-color);
+}
+.matchning .card-head { align-items: flex-start; }
+.matchning .cover { width: 70px; height: 96px; }
+
+@media (max-width: 60rem) {
+  .matchning-sidor { grid-template-columns: 1fr; gap: 1rem; }
+}

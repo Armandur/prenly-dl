@@ -7,12 +7,23 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.concurrency import run_in_threadpool
 
 from ..api import Credentials, build_session
 from ..config import output_root, timezone_name
-from ..covers import cached_cover_path, fetch_and_cache_cover
+from ..covers import (
+    cached_calibre_cover,
+    cached_cover_path,
+    fetch_and_cache_cover,
+    store_calibre_cover,
+)
 from ..downloader import safe_filename
 from ..db import repository as repo
 from ..db.models import AuthStatus, IssueStatus
@@ -40,7 +51,7 @@ from ..services import (
     verify_site,
 )
 from .auth import check_password, is_authenticated
-from .. import calibre
+from .. import calibre, calibre_api, calibre_match
 from .library import folder_usage, resolve_file
 from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
@@ -1048,6 +1059,162 @@ async def open_preview(issue_id: int):
         filename=path.name,
         content_disposition_type="inline",
         headers={"Cache-Control": "no-store"},
+    )
+
+
+# --------------------------------------------------------------------------
+# Calibre: koppla utgåvor till böcker som redan finns
+# --------------------------------------------------------------------------
+
+
+def _calibrekontext(session, kortmeddelande: str = "") -> dict:
+    config = calibre.load_config(session)
+    kontext = {
+        "konfigurerad": config.configured,
+        "forslag": [],
+        "fel": None,
+        "kortmeddelande": kortmeddelande,
+    }
+    if not config.configured:
+        return kontext
+    try:
+        kontext["forslag"] = calibre_match.cached_candidates(session, config)
+    except calibre.CalibreError as error:
+        kontext["fel"] = f"Kunde inte läsa biblioteket: {error}"
+    return kontext
+
+
+@router.get("/calibre", response_class=HTMLResponse)
+def calibre_page(request: Request):
+    with get_session() as session:
+        kontext = _calibrekontext(session)
+    return render(request, "calibre.html", **kontext)
+
+
+def _calibrefragment(request: Request, besked: str):
+    """Rendera om förslagslistan för htmx, annars tillbaka till sidan."""
+    with get_session() as session:
+        kontext = _calibrekontext(session, kortmeddelande=besked)
+    if request.headers.get("HX-Request"):
+        # Bara förslagslistan: hela sidan hade lagt in sidhuvudet en gång
+        # till vid varje swap.
+        return render(request, "calibre_forslag.html", flashes=[], **kontext)
+    flash(request, besked, "success")
+    return back("/calibre")
+
+
+@router.post("/issues/{issue_id}/calibre/link")
+def link_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(...)):
+    """Spara vilken bok utgåvan hör till.
+
+    Skriver ingenting till Calibre: boken kan vara en post användaren
+    själv lagt in, och den ska inte röras av ett klick som betyder "det
+    här är samma utgåva".
+    """
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None:
+            return back("/calibre")
+        config = calibre.load_config(session)
+        if book_id not in calibre_match.tillatna_bocker(session, config):
+            besked = f"Bok {book_id} finns inte bland förslagen"
+        else:
+            issue.calibre_id = book_id
+            issue.calibre_ignored = False
+            # Utgåvan finns nu någonstans, även utan fil på vår disk.
+            issue.status = IssueStatus.DONE.value
+            session.add(issue)
+            calibre_match.glom_forslag()
+            besked = f"{issue.name} hör till bok {book_id}"
+    return _calibrefragment(request, besked)
+
+
+@router.post("/issues/{issue_id}/calibre/push")
+def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(...)):
+    """Koppla och lägg vår fil på boken, vilket ersätter den som finns."""
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None or not issue.file_path:
+            return back("/calibre")
+        config = calibre.load_config(session)
+        if book_id not in calibre_match.tillatna_bocker(session, config):
+            besked = f"Bok {book_id} finns inte bland förslagen"
+        else:
+            try:
+                calibre.push(config, Path(issue.file_path), title="", authors="",
+                             calibre_id=book_id)
+            except calibre.CalibreError as error:
+                besked = f"Calibre svarade: {error}"
+            else:
+                issue.calibre_id = book_id
+                issue.calibre_ignored = False
+                issue.status = IssueStatus.DONE.value
+                session.add(issue)
+                calibre_match.glom_forslag()
+                besked = f"Ersatte filen i bok {book_id} med {issue.name}"
+    return _calibrefragment(request, besked)
+
+
+@router.post("/issues/{issue_id}/calibre/ignore")
+def ignore_calibre_match(request: Request, issue_id: int):
+    """Ingen av kandidaterna var rätt. Utgåvan ska inte komma tillbaka."""
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None:
+            return back("/calibre")
+        issue.calibre_ignored = True
+        session.add(issue)
+        calibre_match.glom_forslag()
+        besked = f"{issue.name} lämnas okopplad"
+    return _calibrefragment(request, besked)
+
+
+def _tillaten_bok(book_id: int):
+    """Bok-id proxyrutterna får hämta, eller None.
+
+    Rutterna går med de sparade uppgifterna, så utan avgränsningen vore
+    prenly-dl en öppen väg in i hela biblioteket.
+    """
+    with get_session() as session:
+        config = calibre.load_config(session)
+        if not config.configured:
+            return None
+        if book_id not in calibre_match.tillatna_bocker(session, config):
+            return None
+        return config
+
+
+@router.get("/calibre/cover/{book_id}")
+def calibre_cover(book_id: int):
+    """Omslaget ur Calibre, cachat på disk som Prenlys egna."""
+    config = _tillaten_bok(book_id)
+    if config is None:
+        return Response(status_code=404)
+    cachad = cached_calibre_cover(book_id)
+    if cachad is None:
+        try:
+            cachad = store_calibre_cover(book_id, calibre_api.fetch_cover(config, book_id))
+        except calibre.CalibreError as error:
+            logger.warning("Kunde inte hämta omslag %s: %s", book_id, error)
+            return Response(status_code=502)
+    return FileResponse(cachad, media_type="image/jpeg")
+
+
+@router.get("/calibre/file/{book_id}")
+def calibre_file(book_id: int):
+    """Bokens fil, vidarebefordrad. Servern kräver digest-auth."""
+    config = _tillaten_bok(book_id)
+    if config is None:
+        return Response(status_code=404)
+    try:
+        svar = calibre_api.open_format(config, book_id)
+    except calibre.CalibreError as error:
+        logger.warning("Kunde inte hämta fil %s: %s", book_id, error)
+        return Response(status_code=502)
+    return StreamingResponse(
+        svar.iter_content(chunk_size=65536),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="calibre-{book_id}.pdf"'},
     )
 
 

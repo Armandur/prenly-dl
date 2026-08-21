@@ -1,0 +1,140 @@
+<div id="calibre-forslag">
+{% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
+
+{% if fel %}
+  <article class="flash flash-error">{{ fel }}</article>
+{% elif not konfigurerad %}
+  <article>
+    Calibre är inte inställt. <a href="/settings">Fyll i adress och bibliotek</a>
+    och slå på integrationen.
+  </article>
+{% elif not forslag %}
+  <article>
+    Inga utgåvor kvar att koppla. Antingen är allt hopkopplat, eller så
+    finns ingen bok i biblioteket som matchar tillräckligt.
+  </article>
+{% else %}
+  <p class="muted">
+    {{ forslag|length }} utgåvor med förslag.
+    <span class="muted">Att koppla skriver ingenting till Calibre - det
+    sparar bara vilken bok utgåvan hör till.</span>
+  </p>
+
+  {% for post in forslag %}
+    {% set kandidat = post.kandidater[0] %}
+    <article class="matchning" id="forslag-{{ post.issue.id }}">
+      <div class="matchning-sidor">
+
+        <div class="matchning-sida">
+          <h3 class="matchning-rubrik">prenly-dl</h3>
+          <div class="card-head">
+            {% if post.issue.cover_checksum %}
+              <img class="cover" loading="lazy"
+                   src="/covers/{{ post.publication.title_id }}/{{ post.issue.cover_checksum }}.jpg"
+                   data-lightbox-src="/covers/{{ post.publication.title_id }}/{{ post.issue.cover_checksum }}.jpg?stor=1"
+                   alt="Omslag {{ post.issue.name }}">
+            {% else %}
+              <span class="cover cover-missing"></span>
+            {% endif %}
+            <div class="card-title">
+              <strong>{{ post.vantad_titel }}</strong><br>
+              <span class="muted">
+                {{ post.publication.name }} · {{ post.issue.publication_date or "utan datum" }}<br>
+                {% if post.lokal_storlek %}
+                  {{ post.lokal_storlek|human_size }} på disk
+                {% else %}
+                  ingen fil hämtad
+                {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="matchning-sida">
+          <h3 class="matchning-rubrik">Calibre</h3>
+          <div class="card-head">
+            <img class="cover" loading="lazy"
+                 src="/calibre/cover/{{ kandidat.book_id }}"
+                 data-lightbox-src="/calibre/cover/{{ kandidat.book_id }}"
+                 alt="Omslag {{ kandidat.titel }}">
+            <div class="card-title">
+              <strong>
+                <a href="/calibre/file/{{ kandidat.book_id }}" target="_blank" rel="noopener">
+                  {{ kandidat.titel }}
+                </a>
+              </strong><br>
+              <span class="muted">
+                {{ kandidat.forfattare }} · {{ kandidat.datum or "utan datum" }}<br>
+                {% if kandidat.storlek %}{{ kandidat.storlek|human_size }} i biblioteket{% endif %}
+                <span title="Hur väl förslaget stämmer">(bok {{ kandidat.book_id }})</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {% if post.lokal_storlek and kandidat.storlek
+            and (post.lokal_storlek - kandidat.storlek)|abs > kandidat.storlek // 100 %}
+        <p class="kortbesked kortbesked-smal">
+          Filerna skiljer sig i storlek. Samma utgåva kan ha hämtats från ett
+          annat håll eller med annan kvalitet.
+        </p>
+      {% endif %}
+
+      <div class="card-actions">
+        <form method="post" action="/issues/{{ post.issue.id }}/calibre/link" class="inline"
+              hx-post="/issues/{{ post.issue.id }}/calibre/link"
+              hx-target="#calibre-forslag" hx-swap="outerHTML">
+          <input type="hidden" name="book_id" value="{{ kandidat.book_id }}">
+          <button>Koppla till bok {{ kandidat.book_id }}</button>
+        </form>
+        {% if post.lokal_storlek %}
+          <form method="post" action="/issues/{{ post.issue.id }}/calibre/push" class="inline"
+                hx-post="/issues/{{ post.issue.id }}/calibre/push"
+                hx-target="#calibre-forslag" hx-swap="outerHTML"
+                hx-confirm="Ersätt filen i bok {{ kandidat.book_id }}?"
+                data-confirm-warning="Filen som ligger i Calibre skrivs över av prenly-dl:s. Den går inte att få tillbaka.">
+            <input type="hidden" name="book_id" value="{{ kandidat.book_id }}">
+            <button class="secondary outline">Koppla och ersätt filen</button>
+          </form>
+        {% endif %}
+        <form method="post" action="/issues/{{ post.issue.id }}/calibre/ignore" class="inline"
+              hx-post="/issues/{{ post.issue.id }}/calibre/ignore"
+              hx-target="#calibre-forslag" hx-swap="outerHTML">
+          <button class="secondary outline">Ingen av dem</button>
+        </form>
+      </div>
+
+      {% if post.kandidater|length > 1 %}
+        <details>
+          <summary class="muted">{{ post.kandidater|length - 1 }} till som kan vara samma</summary>
+          <div class="scroll-x">
+          <table>
+            <thead><tr><th>Bok</th><th>Titel</th><th>Författare</th><th>Datum</th><th></th></tr></thead>
+            <tbody>
+            {% for annan in post.kandidater[1:] %}
+              <tr>
+                <td>{{ annan.book_id }}</td>
+                <td><a href="/calibre/file/{{ annan.book_id }}" target="_blank" rel="noopener">{{ annan.titel }}</a></td>
+                <td class="muted">{{ annan.forfattare }}</td>
+                <td class="muted">{{ annan.datum }}</td>
+                <td>
+                  <form method="post" action="/issues/{{ post.issue.id }}/calibre/link" class="inline"
+                        hx-post="/issues/{{ post.issue.id }}/calibre/link"
+                        hx-target="#calibre-forslag" hx-swap="outerHTML">
+                    <input type="hidden" name="book_id" value="{{ annan.book_id }}">
+                    <button class="secondary outline">Koppla</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </details>
+      {% endif %}
+    </article>
+  {% endfor %}
+{% endif %}
+</div>

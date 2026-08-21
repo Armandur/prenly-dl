@@ -371,6 +371,28 @@ def issue_number_in_year(session: Session, issue: Issue) -> int | None:
         return None
 
 
+def issues_without_calibre(session: Session, title_id: int) -> list[Issue]:
+    """Titelns utgåvor som varken är kopplade eller bortvalda."""
+    return list(
+        session.execute(
+            select(Issue).where(
+                Issue.title_id == title_id,
+                Issue.calibre_id.is_(None),
+                Issue.calibre_ignored.is_(False),
+            ).order_by(Issue.publication_date.desc())
+        ).unique().scalars()
+    )
+
+
+def calibre_ids(session: Session) -> list[int]:
+    """Alla bok-id prenly-dl känner till."""
+    return list(
+        session.execute(
+            select(Issue.calibre_id).where(Issue.calibre_id.is_not(None))
+        ).scalars()
+    )
+
+
 def get_issue(session: Session, issue_id: int) -> Issue | None:
     return session.execute(
         select(Issue).where(Issue.id == issue_id)

@@ -36,7 +36,9 @@ TIMEOUT = 300
 # calibredb skriver "Added book ids: 1234" vid lyckat add. Formatet är
 # inte dokumenterat och har varierat mellan versioner, så parsningen är
 # tolerant och får misslyckas utan att fälla nedladdningen.
-ID_MONSTER = re.compile(r"Added book ids?:\s*([0-9,\s]+)", re.IGNORECASE)
+ID_MONSTER = re.compile(
+    r"(?:Added|Merged) book ids?:\s*([0-9,\s]+)", re.IGNORECASE
+)
 # Reserv för när utskriften inte är engelsk. Verifierat 2026-08-21: en
 # svensk calibre svarade "Tillagda bokidentifierare: 1775", och miljön
 # nedan hann inte hjälpa eftersom språket kom från serversidan.
@@ -101,11 +103,12 @@ def build_add_argv(
         argv += ["--username", config.username]
         if config.password:
             argv += ["--password", "<stdin>"]
-    # Sista skyddet mot dubbletter: går bok-id:t inte att läsa ur svaret
-    # vet vi inte om boken kom in, och nästa försök hade lagt in en till.
-    # Titel och författare byggs deterministiskt ur publikationen, så
-    # sammanslagningen träffar rätt bok.
-    argv += ["--automerge", "overwrite"]
+    # add får aldrig röra en bok som redan finns: en krock på titel och
+    # författare kan vara någon annans post. Uppmätt 2026-08-21: overwrite
+    # ersätter den befintliga filen, och ignore skriver bara filnamnet
+    # utan bok-id, vilket hade tappat dubblettskyddet. new_record ger
+    # alltid ett läsbart id. Medvetna kopplingar görs i matchningsvyn.
+    argv += ["--automerge", "new_record"]
     argv += ["--title", title, "--authors", authors]
     if series:
         argv += ["--series", series]

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Calibre - prenly-dl{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>Koppla till Calibre</h1>
+  <p class="muted">
+    Utgåvor som saknar koppling, med böcker ur biblioteket som verkar vara
+    samma sak. Förslagen är gissningar - enbart samma utgivningsdatum
+    räcker inte, det ska också stämma på titel eller författare.
+  </p>
+</hgroup>
+
+{% include "calibre_forslag.html" %}
+{% endblock %}

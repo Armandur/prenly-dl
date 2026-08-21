@@ -87,6 +87,7 @@ def test_serienummer_ur_utgivningsdatum():
         ("Added book ids: 1234", 1234),
         ("Added book ids: 12, 13", 12),
         ("Added book id: 7\n", 7),
+        ("Merged book ids: 1779", 1779),
         # calibredb följer miljöns språk. Verifierat mot en svensk
         # calibre 9.11 som svarade så här, vilket kostade ett bok-id.
         ("Tillagda bokidentifierare: 1775", 1775),
@@ -331,10 +332,15 @@ def test_misslyckat_utgivningsdatum_kostar_inte_bok_id():
     assert bok_id == 77
 
 
-def test_add_slar_ihop_i_stallet_for_att_dubblera():
-    """Sista skyddet när bok-id:t inte gick att läsa ur svaret."""
+def test_add_ror_aldrig_en_bok_som_redan_finns():
+    """Uppmätt mot en riktig server 2026-08-21:
+
+    overwrite ersätter den befintliga filen, ignore skriver bara filnamnet
+    utan bok-id. new_record ger alltid ett läsbart id och lämnar den
+    befintliga boken i fred.
+    """
     argv = calibre.build_add_argv(KONFIG, Path("/a.pdf"), title="T", authors="A")
-    assert argv[argv.index("--automerge") + 1] == "overwrite"
+    assert argv[argv.index("--automerge") + 1] == "new_record"
 
 
 def test_omslaget_foljer_med_till_calibre(db, monkeypatch, tmp_path):

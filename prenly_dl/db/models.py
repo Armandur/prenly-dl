@@ -227,6 +227,9 @@ class Issue(Base):
     # inte att hämta igen, så den räknas inte som en katalogutgåva.
     disk_only: Mapped[bool] = mapped_column(Boolean, default=False)
     calibre_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Utgåvan har granskats i matchningsvyn utan att kopplas. Utan flaggan
+    # dyker samma förslag upp vid varje genomgång.
+    calibre_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
