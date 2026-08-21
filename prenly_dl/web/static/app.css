@@ -16,8 +16,12 @@
 .badge.warn { background: #f0e8d0; color: #4d411d; }
 .badge.bad { background: #f0d6d6; color: #4d1d1d; }
 .badge.neutral { background: #e4e4e4; color: #444; }
+/* Filen finns, men utgåvan gör det inte i katalogen - varken hämtad
+   eller misslyckad, så den får en egen färg. */
+.badge-disk { background: #e6dcf0; color: #3a1d4d; border: 1px dashed #8a6ea8; }
 
 @media (prefers-color-scheme: dark) {
+  .badge-disk { background: #2f1d4d; color: #cbb0e0; border-color: #6f5a8a; }
   .badge.ok { background: #1d4d33; color: #9fe0b8; }
   .badge.pending { background: #1d3a4d; color: #9fcbe0; }
   .badge.warn { background: #4d411d; color: #e0d29f; }
@@ -237,4 +241,22 @@ progress { margin: 0; width: 8rem; }
 @media (prefers-color-scheme: dark) {
   .path-writable { color: #9fe0b8; }
   .path-readonly { color: #e09f9f; }
+}
+
+/* Varningsläget i bekräftelserutan: för åtgärder som inte går att ångra.
+   Skillnaden mot en vanlig bekräftelse måste synas innan man trycker. */
+#confirm-dialog.dialog-warning article {
+  border-left: 4px solid #c9403f;
+}
+#confirm-warning {
+  margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; border-radius: 0.4rem;
+  background: #f8e6e6; color: #4d1d1d; font-size: 0.9rem;
+}
+#confirm-dialog.dialog-warning #confirm-yes {
+  --pico-background-color: #c9403f;
+  --pico-border-color: #c9403f;
+}
+
+@media (prefers-color-scheme: dark) {
+  #confirm-warning { background: #4d1d1d; color: #f0c9c9; }
 }

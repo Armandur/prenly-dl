@@ -8,7 +8,7 @@
 <h2>Utgåvor</h2>
 <div class="issues-toolbar">
   <p class="muted">
-    {{ total_issues }} kända utgåvor{% if publication.catalogue_complete %},
+    {{ total_issues }} kända utgåvor{% if disk_antal %}, varav {{ disk_antal }} bara på disk{% endif %}{% if publication.catalogue_complete %},
     sida {{ page }} av {{ sista_sidan }}{% else %}, fler finns längre bak i katalogen{% endif %}.
     {% if issues %}Visar {{ (page - 1) * page_size + 1 }}-{{ (page - 1) * page_size + issues|length }}.{% endif %}
   </p>
@@ -61,9 +61,11 @@
   {% for issue in issues %}
     <tr>
       <td>
-        <input type="checkbox" class="valj-utgava" form="batch-utgavor"
-               name="valda" value="{{ issue.id }}"
-               aria-label="Markera {{ issue.name }}">
+        {% if not issue.disk_only %}
+          <input type="checkbox" class="valj-utgava" form="batch-utgavor"
+                 name="valda" value="{{ issue.id }}"
+                 aria-label="Markera {{ issue.name }}">
+        {% endif %}
       </td>
       <td class="cover-cell">
         {% if issue.cover_checksum %}
@@ -78,7 +80,11 @@
       <td>{{ issue.name }}</td>
       <td>{{ issue.publication_date or "-" }}</td>
       <td>
-        <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
+        {% if issue.disk_only %}
+          <span class="badge badge-disk" title="Finns inte i Prenlys katalog och går inte att hämta igen">bara på disk</span>
+        {% else %}
+          <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
+        {% endif %}
         {% if issue.error %}<br><span class="muted">{{ issue.error }}</span>{% endif %}
       </td>
       <td>{{ issue.page_count or "-" }}</td>
@@ -93,6 +99,18 @@
       </td>
       <td>
         <div class="card-actions">
+          {% if issue.disk_only %}
+          {# Utgåvan finns inte i katalogen, så hämtning och
+             förhandsgranskning skulle bara ge fel. Kvar blir filen. #}
+          <form method="post" action="/issues/{{ issue.id }}/delete-file" class="inline"
+                hx-post="/issues/{{ issue.id }}/delete-file"
+                hx-target="#utgavor" hx-swap="outerHTML"
+                hx-confirm="Radera filen för {{ issue.name }}?"
+                data-confirm-warning="Utgåvan finns inte i Prenlys katalog. Filen går inte att hämta igen.">
+            <input type="hidden" name="page" value="{{ page }}">
+            <button class="secondary outline">Ta bort filen</button>
+          </form>
+          {% else %}
           {# En hämtad utgåva har redan filen, och filnamnet är en länk
              till den - att bygga en andra kopia vore slöseri. #}
           {% if issue.status != "done" %}
@@ -116,6 +134,7 @@
             <input type="hidden" name="page" value="{{ page }}">
             <button class="secondary outline">Tvinga om</button>
           </form>
+          {% endif %}
         </div>
       </td>
     </tr>

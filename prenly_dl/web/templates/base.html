@@ -38,6 +38,9 @@
   <dialog id="confirm-dialog">
     <article>
       <p id="confirm-text"></p>
+      {# Varningsläget: sätts av data-confirm-warning på det som utlöste
+         frågan, för åtgärder som inte går att ångra. #}
+      <p id="confirm-warning" hidden></p>
       <footer class="card-actions">
         <button class="secondary outline" id="confirm-no">Avbryt</button>
         <button id="confirm-yes" autofocus>Bekräfta</button>
@@ -48,7 +51,18 @@
     (function () {
       const dialog = document.getElementById("confirm-dialog");
       const text = document.getElementById("confirm-text");
+      const varning = document.getElementById("confirm-warning");
+      const ja = document.getElementById("confirm-yes");
       let vantande = null;
+
+      function las(fraga, element) {
+        text.textContent = fraga;
+        const besked = element && element.dataset ? element.dataset.confirmWarning : "";
+        varning.textContent = besked || "";
+        varning.hidden = !besked;
+        dialog.classList.toggle("dialog-warning", Boolean(besked));
+        ja.textContent = besked ? "Radera ändå" : "Bekräfta";
+      }
 
       function avgor(ok) {
         const uppgift = vantande;
@@ -60,7 +74,7 @@
         if (typeof uppgift === "function") uppgift(true);
         else uppgift.submit();
       }
-      document.getElementById("confirm-yes").addEventListener("click", () => avgor(true));
+      ja.addEventListener("click", () => avgor(true));
       document.getElementById("confirm-no").addEventListener("click", () => avgor(false));
       dialog.addEventListener("cancel", (e) => { e.preventDefault(); avgor(false); });
       dialog.addEventListener("click", (e) => { if (e.target === dialog) avgor(false); });
@@ -74,7 +88,7 @@
         // submit här hindrar bara den native posten, inte htmx request.
         if (!form || form.hasAttribute("hx-post") || vantande === form) return;
         event.preventDefault();
-        text.textContent = form.dataset.confirm;
+        las(form.dataset.confirm, form);
         vantande = form;
         dialog.showModal();
       }, true);
@@ -83,7 +97,7 @@
       document.body.addEventListener("htmx:confirm", (event) => {
         if (!event.detail.question) return;
         event.preventDefault();
-        text.textContent = event.detail.question;
+        las(event.detail.question, event.detail.elt);
         vantande = event.detail.issueRequest;
         dialog.showModal();
       });

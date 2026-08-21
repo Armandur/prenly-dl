@@ -125,3 +125,78 @@ def test_diskposter_raknas_inte_som_katalogutgavor(db, temp_env):
 
         assert repo.count_issues(session, publication.id) == 2
         assert repo.count_catalogue_issues(session, publication.id) == 1
+
+
+def _klient(temp_env, monkeypatch):
+    from fastapi.testclient import TestClient
+    import prenly_dl.web.app as app_module
+
+    monkeypatch.setattr(app_module, "start_scheduler", lambda: None)
+    monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+    return TestClient(app_module.create_app())
+
+
+def test_routen_raderar_filen_och_raden(db, temp_env, monkeypatch):
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        path = _skriv(publication, "Hemslojd 2011-03-15.pdf")
+        import_existing_files(session)
+        session.commit()
+        issue_id = repo.list_issues(session, publication.id)[0].id
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(f"/issues/{issue_id}/delete-file", data={"page": 1})
+
+    assert svar.status_code in (200, 303)
+    assert not path.exists()
+    with db() as session:
+        assert repo.get_issue(session, issue_id) is None
+
+
+def test_routen_vagrar_radera_en_katalogutgava(db, temp_env, monkeypatch):
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        issue, _ = repo.upsert_issue(
+            session, publication, {"uid": "k1", "name": "2026-08-20"}
+        )
+        path = _skriv(publication, "Hemslojd 2026-08-20.pdf")
+        issue.file_path = str(path)
+        session.commit()
+        issue_id = issue.id
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/issues/{issue_id}/delete-file",
+            data={"page": 1},
+            headers={"HX-Request": "true"},
+        )
+
+    assert svar.status_code == 200
+    assert "tas inte bort här" in svar.text
+    assert path.is_file()
+    with db() as session:
+        assert repo.get_issue(session, issue_id) is not None
+
+
+def test_tabellen_visar_diskposten_utan_hamtknappar(db, temp_env, monkeypatch):
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        _skriv(publication, "Hemslojd 2011-03-15.pdf")
+        import_existing_files(session)
+        session.commit()
+        slug = publication.slug
+        issue_id = repo.list_issues(session, publication.id)[0].id
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.get(f"/publications/{slug}")
+
+    assert "bara på disk" in svar.text
+    assert "delete-file" in svar.text
+    # Batchraden i verktygsfältet har egna knappar med samma ord, så
+    # kontrollen gäller radens knappar: de finns bara i ett formulär som
+    # postar till /issues/<id>/download.
+    assert f"/issues/{issue_id}/download" not in svar.text
+    assert f"data-preview=\"/issues/{issue_id}/preview\"" not in svar.text

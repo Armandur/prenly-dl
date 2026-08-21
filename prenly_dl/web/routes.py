@@ -40,7 +40,7 @@ from ..services import (
     verify_site,
 )
 from .auth import check_password, is_authenticated
-from .library import folder_usage
+from .library import folder_usage, resolve_file
 from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
 
@@ -570,6 +570,7 @@ def _utgavekontext(session, publication, page: int) -> dict:
         fel = f"Kunde inte hämta äldre utgåvor: {error}"
 
     total = repo.count_issues(session, publication.id)
+    katalogantal = repo.count_catalogue_issues(session, publication.id)
     # Katalogen kan ta slut mitt i en begärd sida - backa till den sista
     # som faktiskt har utgåvor i stället för att visa en tom tabell.
     sista_sidan = max(1, -(-total // PAGE_SIZE))
@@ -592,6 +593,8 @@ def _utgavekontext(session, publication, page: int) -> dict:
         "page": page,
         "page_size": PAGE_SIZE,
         "total_issues": total,
+        # Diskfynden är utgåvor användaren äger, men inte katalogutgåvor.
+        "disk_antal": total - katalogantal,
         "sista_sidan": sista_sidan,
         "har_fler": total > page * PAGE_SIZE or not publication.catalogue_complete,
         # Sidnummer och årshopp kräver att katalogen är helt hämtad: annars
@@ -862,6 +865,53 @@ def download_issue_now(
         )
     flash(request, besked, "info" if job is None else "success")
     return back(f"/publications/{slug}" if slug else "/jobs")
+
+
+@router.post("/issues/{issue_id}/delete-file")
+def delete_disk_issue(request: Request, issue_id: int, page: int = Form(1)):
+    """Radera en fil som bara finns på disk, och raden med den.
+
+    Bara diskposter: en katalogutgåva går att hämta igen, och för den vore
+    en radering inte oåterkallelig utan bara omväg till samma fil.
+    """
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None:
+            return back("/")
+        publication = repo.get_publication_for_title(session, issue.title_id)
+        slug = publication.slug if publication else ""
+        namn = issue.name
+        if not issue.disk_only:
+            besked = f"{namn} finns i katalogen och tas inte bort här"
+            kontext = _utgavekontext(session, publication, page) if publication else None
+        else:
+            besked = _radera_diskfil(session, issue)
+            session.flush()
+            kontext = _utgavekontext(session, publication, page) if publication else None
+
+    if request.headers.get("HX-Request") and kontext is not None:
+        kontext.pop("_fel", None)
+        return render(
+            request, "issues_section.html", kortmeddelande=besked, flashes=[], **kontext
+        )
+    flash(request, besked, "success")
+    return back(f"/publications/{slug}" if slug else "/library")
+
+
+def _radera_diskfil(session, issue) -> str:
+    """Ta bort PDF:en och utgåveraden. Filen går inte att hämta igen."""
+    namn = issue.name
+    path = _bibliotekssokvag(issue.file_path)
+    borttagen = False
+    if path is not None:
+        mal = resolve_file(path)
+        if mal is not None:
+            mal.unlink()
+            borttagen = True
+    session.delete(issue)
+    if borttagen:
+        return f"Tog bort {namn} och dess fil"
+    return f"Tog bort raden {namn}, men filen fanns inte på disk"
 
 
 @router.post("/publications/{publication_id}/issues/batch")
