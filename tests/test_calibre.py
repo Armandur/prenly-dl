@@ -306,3 +306,88 @@ def test_omhamtning_skapar_ingen_dubblett(db, monkeypatch):
     assert "77" in korda[0]
     with db() as session:
         assert repo.get_issue(session, issue_id).calibre_id == 77
+
+
+def test_misslyckat_utgivningsdatum_kostar_inte_bok_id():
+    """Datumet är ett andra anrop. Går id:t förlorat blir nästa force en dubblett."""
+    def _add_ok_men_datum_spricker(config, argv):
+        if argv[1] == "set_metadata":
+            raise calibre.CalibreError("fältet finns inte")
+        return "Added book ids: 77"
+
+    original = calibre.run
+    calibre.run = _add_ok_men_datum_spricker
+    try:
+        bok_id = calibre.push(
+            KONFIG, Path("/a.pdf"), title="T", authors="A", pubdate="2011-03-15"
+        )
+    finally:
+        calibre.run = original
+
+    assert bok_id == 77
+
+
+def test_add_slar_ihop_i_stallet_for_att_dubblera():
+    """Sista skyddet när bok-id:t inte gick att läsa ur svaret."""
+    argv = calibre.build_add_argv(KONFIG, Path("/a.pdf"), title="T", authors="A")
+    assert argv[argv.index("--automerge") + 1] == "overwrite"
+
+
+def test_omslaget_foljer_med_till_calibre(db, monkeypatch, tmp_path):
+    """Omslaget går via omslagscachen och inte samma väg som övrig metadata."""
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+
+    omslag = tmp_path / "omslag.jpg"
+    omslag.write_bytes(b"jpeg")
+
+    with db() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        site.auth_status = "ok"
+        publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        publication.enabled = True
+        issue, _ = repo.upsert_issue(
+            session, publication,
+            {"uid": "1", "name": "2026-01-01", "publication_date": "2026-01-01",
+             "media": {"checksum": "abc123"}},
+        )
+        repo.enqueue_download(session, issue)
+
+    _lyckad_nedladdning(monkeypatch)
+    _sla_pa_calibre(db)
+    monkeypatch.setattr(
+        services, "fetch_and_cache_cover",
+        lambda http, creds, title_id, checksum, stor=False: omslag,
+    )
+    korda = []
+
+    def _fangar(config, argv):
+        korda.append(argv)
+        return "Added book ids: 5"
+
+    monkeypatch.setattr(calibre, "run", _fangar)
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    add = korda[0]
+    assert add[add.index("--cover") + 1] == str(omslag)
+
+
+def test_stdin_stangs_aven_utan_losenord():
+    """Med --username men utan lösenord frågar calibredb efter ett.
+
+    Ärvd stdin hade hängt arbetaren tills timeouten löste ut, alltså fem
+    minuter per utgåva.
+    """
+    utan_losen = calibre.CalibreConfig(
+        enabled=True, url="http://a:8081", library="b", username="rasmus"
+    )
+    # Ett kommando som läser stdin till EOF returnerar bara om pipen stängs.
+    utdata = calibre.run(
+        utan_losen,
+        ["python3", "-c", "import sys; print('las:' + repr(sys.stdin.read()))"],
+    )
+    assert utdata.strip() == "las:''"

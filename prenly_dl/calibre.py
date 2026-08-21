@@ -91,6 +91,11 @@ def build_add_argv(
         argv += ["--username", config.username]
         if config.password:
             argv += ["--password", "<stdin>"]
+    # Sista skyddet mot dubbletter: går bok-id:t inte att läsa ur svaret
+    # vet vi inte om boken kom in, och nästa försök hade lagt in en till.
+    # Titel och författare byggs deterministiskt ur publikationen, så
+    # sammanslagningen träffar rätt bok.
+    argv += ["--automerge", "overwrite"]
     argv += ["--title", title, "--authors", authors]
     if series:
         argv += ["--series", series]
@@ -164,7 +169,10 @@ def run(config: CalibreConfig, argv: list[str]) -> str:
     try:
         klar = subprocess.run(
             argv,
-            input=f"{config.password}\n" if config.password else None,
+            # Alltid en pipe: med --username men utan lösenord frågar
+            # calibredb efter ett, och ärvd stdin hade hängt arbetaren
+            # tills timeouten löste ut.
+            input=f"{config.password}\n" if config.password else "",
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
@@ -215,5 +223,10 @@ def push(
             "Kunde inte läsa bok-id ur calibredb:s svar: " + utdata.strip()[:200]
         )
     if pubdate:
-        run(config, build_pubdate_argv(config, nytt_id, pubdate))
+        try:
+            run(config, build_pubdate_argv(config, nytt_id, pubdate))
+        except CalibreError as error:
+            # Boken ligger inne som nytt_id. Kastar vi här går id:t
+            # förlorat och nästa tvingade omhämtning skapar en dubblett.
+            logger.warning("Kunde inte sätta utgivningsdatum: %s", error)
     return nytt_id
