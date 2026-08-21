@@ -31,7 +31,8 @@
       <form method="post" action="/calibre/retitle"
             hx-post="/calibre/retitle" hx-target="#calibre-forslag" hx-swap="outerHTML"
             hx-confirm="Skriv om {{ titelrattningar|length }} titlar i Calibre?"
-            data-confirm-warning="Titlarna som står i Calibre ersätts. Den gamla titeln går inte att få tillbaka.">
+            data-confirm-warning="Titlarna som står i Calibre ersätts. Den gamla titeln går inte att få tillbaka."
+                data-confirm-cta="Skriv om titlarna">
         <button>Rätta titlarna</button>
       </form>
     </div>
@@ -187,7 +188,8 @@
                 hx-post="/issues/{{ post.issue.id }}/calibre/push"
                 hx-target="#calibre-forslag" hx-swap="outerHTML"
                 hx-confirm="Ersätt filen i bok {{ kandidat.book_id }}?"
-                data-confirm-warning="Filen som ligger i Calibre skrivs över av prenly-dl:s. Den går inte att få tillbaka.">
+                data-confirm-warning="Filen som ligger i Calibre skrivs över av prenly-dl:s. Den går inte att få tillbaka."
+                data-confirm-cta="Ersätt filen">
             <input type="hidden" name="book_id" value="{{ kandidat.book_id }}">
             <button class="secondary outline">Koppla och ersätt filen</button>
           </form>

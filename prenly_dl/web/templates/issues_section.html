@@ -136,7 +136,8 @@
                 hx-post="/issues/{{ issue.id }}/delete-file"
                 hx-target="#utgavor" hx-swap="outerHTML"
                 hx-confirm="Radera filen för {{ issue.name }}?"
-                data-confirm-warning="Utgåvan finns inte i Prenlys katalog. Filen går inte att hämta igen.">
+                data-confirm-warning="Utgåvan finns inte i Prenlys katalog. Filen går inte att hämta igen."
+                data-confirm-cta="Radera filen">
             <input type="hidden" name="page" value="{{ page }}">
             <button class="secondary outline">Ta bort filen</button>
           </form>

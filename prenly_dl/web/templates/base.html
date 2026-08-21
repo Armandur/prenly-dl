@@ -58,11 +58,15 @@
 
       function las(fraga, element) {
         text.textContent = fraga;
-        const besked = element && element.dataset ? element.dataset.confirmWarning : "";
-        varning.textContent = besked || "";
+        const data = element && element.dataset ? element.dataset : {};
+        const besked = data.confirmWarning || "";
+        varning.textContent = besked;
         varning.hidden = !besked;
         dialog.classList.toggle("dialog-warning", Boolean(besked));
-        ja.textContent = besked ? "Radera ändå" : "Bekräfta";
+        // Knappen ska säga vad som faktiskt händer. Varje varning anger
+        // sin egen text, annars blir det "Radera ändå" på en åtgärd som
+        // inte raderar något.
+        ja.textContent = data.confirmCta || (besked ? "Fortsätt ändå" : "Bekräfta");
       }
 
       function avgor(ok) {
