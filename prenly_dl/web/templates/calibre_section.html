@@ -1,4 +1,4 @@
-<div id="calibre-forslag">
+<div id="calibre-section">
 {% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
 
 {% if titelrattningar %}
@@ -29,7 +29,7 @@
     </details>
     <div class="card-actions">
       <form method="post" action="/calibre/retitle"
-            hx-post="/calibre/retitle" hx-target="#calibre-forslag" hx-swap="outerHTML"
+            hx-post="/calibre/retitle" hx-target="#calibre-section" hx-swap="outerHTML"
             hx-confirm="Skriv om {{ titelrattningar|length }} titlar i Calibre?"
             data-confirm-warning="Titlarna som står i Calibre ersätts. Den gamla titeln går inte att få tillbaka."
                 data-confirm-cta="Skriv om titlarna">
@@ -70,7 +70,7 @@
     </details>
     <div class="card-actions">
       <form method="post" action="/calibre/enrich"
-            hx-post="/calibre/enrich" hx-target="#calibre-forslag" hx-swap="outerHTML">
+            hx-post="/calibre/enrich" hx-target="#calibre-section" hx-swap="outerHTML">
         <button>Fyll på uppgifterna</button>
       </form>
     </div>
@@ -130,7 +130,7 @@
           <form method="post" action="/issues/{{ post.issue.id }}/headline"
                 class="rubrikfalt" role="group"
                 hx-post="/issues/{{ post.issue.id }}/headline"
-                hx-target="#calibre-forslag" hx-swap="outerHTML">
+                hx-target="#calibre-section" hx-swap="outerHTML">
             <input name="headline" value="{{ post.issue.headline }}"
                    placeholder="Rubrik, till exempel Stickspår"
                    aria-label="Rubrik för {{ post.issue.name }}">
@@ -177,7 +177,7 @@
       <div class="card-actions">
         <form method="post" action="/issues/{{ post.issue.id }}/calibre/link" class="inline"
               hx-post="/issues/{{ post.issue.id }}/calibre/link"
-              hx-target="#calibre-forslag" hx-swap="outerHTML">
+              hx-target="#calibre-section" hx-swap="outerHTML">
           <input type="hidden" name="book_id" value="{{ kandidat.book_id }}">
           <button>Koppla till bok {{ kandidat.book_id }}</button>
         </form>
@@ -186,7 +186,7 @@
         {% if post.lokal_storlek and not kandidat.samma_storlek %}
           <form method="post" action="/issues/{{ post.issue.id }}/calibre/push" class="inline"
                 hx-post="/issues/{{ post.issue.id }}/calibre/push"
-                hx-target="#calibre-forslag" hx-swap="outerHTML"
+                hx-target="#calibre-section" hx-swap="outerHTML"
                 hx-confirm="Ersätt filen i bok {{ kandidat.book_id }}?"
                 data-confirm-warning="Filen som ligger i Calibre skrivs över av prenly-dl:s. Den går inte att få tillbaka."
                 data-confirm-cta="Ersätt filen">
@@ -196,7 +196,7 @@
         {% endif %}
         <form method="post" action="/issues/{{ post.issue.id }}/calibre/ignore" class="inline"
               hx-post="/issues/{{ post.issue.id }}/calibre/ignore"
-              hx-target="#calibre-forslag" hx-swap="outerHTML">
+              hx-target="#calibre-section" hx-swap="outerHTML">
           <button class="secondary outline">Ingen av dem</button>
         </form>
       </div>
@@ -223,7 +223,7 @@
                 <td>
                   <form method="post" action="/issues/{{ post.issue.id }}/calibre/link" class="inline"
                         hx-post="/issues/{{ post.issue.id }}/calibre/link"
-                        hx-target="#calibre-forslag" hx-swap="outerHTML">
+                        hx-target="#calibre-section" hx-swap="outerHTML">
                     <input type="hidden" name="book_id" value="{{ annan.book_id }}">
                     <button class="secondary outline">Koppla</button>
                   </form>

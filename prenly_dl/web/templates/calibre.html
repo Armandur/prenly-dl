@@ -1,21 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Calibre - prenly-dl{% endblock %}
+{% block title %}Calibre-koppling - prenly-dl{% endblock %}
 {% block content %}
 <hgroup>
-  <h1>Koppla till Calibre</h1>
+  <h1>Calibre-koppling</h1>
   <p class="muted">
-    Utgåvor som saknar koppling, med böcker ur biblioteket som verkar vara
-    samma sak. Förslagen är gissningar - enbart samma utgivningsdatum
-    räcker inte, det ska också stämma på titel eller författare.
+    Här hålls prenly-dl och Calibre i samma bild: utgåvor kopplas till
+    böcker som redan finns, titlar som inte stämmer rättas, och uppgifter
+    Calibre saknar fylls på. Kopplingsförslagen är gissningar - enbart
+    samma utgivningsdatum räcker inte, det ska också stämma på titel eller
+    författare.
+  </p>
+  <p class="muted">
+    Inloggningsuppgifterna till servern bor under
+    <a href="/settings">Inställningar</a>.
   </p>
 </hgroup>
 
 <div class="card-actions" style="margin-bottom:1.5rem">
   <form method="post" action="/calibre/refresh"
-        hx-post="/calibre/refresh" hx-target="#calibre-forslag" hx-swap="outerHTML">
+        hx-post="/calibre/refresh" hx-target="#calibre-section" hx-swap="outerHTML">
     <button class="secondary outline">Hämta om från Calibre</button>
   </form>
 </div>
 
-{% include "calibre_forslag.html" %}
+{% include "calibre_section.html" %}
 {% endblock %}

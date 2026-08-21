@@ -1165,7 +1165,7 @@ def _calibrefragment(request: Request, besked: str):
     if request.headers.get("HX-Request"):
         # Bara förslagslistan: hela sidan hade lagt in sidhuvudet en gång
         # till vid varje swap.
-        return render(request, "calibre_forslag.html", flashes=[], **kontext)
+        return render(request, "calibre_section.html", flashes=[], **kontext)
     flash(request, besked, "success")
     return back("/calibre")
 
