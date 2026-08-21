@@ -46,19 +46,20 @@
                   ingen fil hämtad
                 {% endif %}
               </span>
-              {# De äldre utgåvorna har inga artiklar i Prenly, så temat
-                 går inte att hämta och måste kunna skrivas för hand. #}
-              <form method="post" action="/issues/{{ post.issue.id }}/theme"
-                    class="temafalt" role="group"
-                    hx-post="/issues/{{ post.issue.id }}/theme"
-                    hx-target="#calibre-forslag" hx-swap="outerHTML">
-                <input name="theme" value="{{ post.issue.theme }}"
-                       placeholder="Tema, till exempel Sport"
-                       aria-label="Tema för {{ post.issue.name }}">
-                <button class="secondary outline">Spara</button>
-              </form>
             </div>
           </div>
+          {# De äldre utgåvorna har inga artiklar i Prenly, så temat går
+             inte att hämta och måste kunna skrivas för hand. Det ligger
+             under kortet och inte i titelkolumnen, som är smal. #}
+          <form method="post" action="/issues/{{ post.issue.id }}/theme"
+                class="temafalt" role="group"
+                hx-post="/issues/{{ post.issue.id }}/theme"
+                hx-target="#calibre-forslag" hx-swap="outerHTML">
+            <input name="theme" value="{{ post.issue.theme }}"
+                   placeholder="Tema, till exempel Stickspår"
+                   aria-label="Tema för {{ post.issue.name }}">
+            <button class="secondary outline">Spara tema</button>
+          </form>
         </div>
 
         <div class="matchning-sida">

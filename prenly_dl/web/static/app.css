@@ -287,12 +287,26 @@ progress { margin: 0; width: 8rem; }
    på det som råkar stå ovanför, eftersom storleksvarningen bara finns
    ibland. */
 .matchning .card-actions { margin-top: 1rem; }
-.matchning .temafalt { margin: 0.6rem 0 0; max-width: 22rem; }
 /* Listan med övriga kandidater satt tätt mot knappraden ovanför. */
 .matchning details { margin-top: 1rem; }
 .matchning details table { margin-bottom: 0; }
-.matchning .temafalt input { font-size: 0.85rem; }
 .matchning .kortbesked { margin: 1rem 0 0; }
+
+/* Temafältet. Pico ger knappar i role=group både stor padding och
+   flex: 1 1 auto, så knapptexten bröts på två rader och fältet blev
+   dubbelt så högt som det behövde. */
+.matchning .temafalt { margin: 0.75rem 0 0; max-width: 26rem; }
+.matchning .temafalt input {
+  font-size: 0.85rem;
+  margin: 0;
+}
+.matchning .temafalt button {
+  flex: 0 0 auto;
+  width: auto;
+  white-space: nowrap;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
 
 @media (max-width: 60rem) {
   .matchning-sidor { grid-template-columns: 1fr; gap: 1rem; }
