@@ -292,3 +292,38 @@ progress { margin: 0; width: 8rem; }
 @media (max-width: 60rem) {
   .matchning-sidor { grid-template-columns: 1fr; gap: 1rem; }
 }
+
+/* Spinner medan htmx hämtar. htmx sätter klassen på det element som
+   skickade requesten, så regeln gäller varje formulär i appen utan att
+   någon mall behöver ändras. Utan den ser ett långsamt anrop ut som att
+   klicket inte tog. */
+@keyframes snurr { to { transform: rotate(1turn); } }
+
+form.htmx-request button,
+button.htmx-request {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+form.htmx-request button::after,
+button.htmx-request::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  color: var(--pico-color);
+  animation: snurr 0.7s linear infinite;
+}
+
+/* Medan ett kort väntar ska inte de andra knapparna se klickbara ut. */
+.card-actions:has(form.htmx-request) button { opacity: 0.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  form.htmx-request button::after,
+  button.htmx-request::after { animation-duration: 2s; }
+}

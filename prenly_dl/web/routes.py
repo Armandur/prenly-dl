@@ -1124,7 +1124,7 @@ def link_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
             # Utgåvan finns nu någonstans, även utan fil på vår disk.
             issue.status = IssueStatus.DONE.value
             session.add(issue)
-            calibre_match.glom_forslag()
+            calibre_match.ta_bort_forslag(issue_id)
             besked = f"{issue.name} hör till bok {book_id}"
     return _calibrefragment(request, besked)
 
@@ -1155,7 +1155,7 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
                 issue.calibre_ignored = False
                 issue.status = IssueStatus.DONE.value
                 session.add(issue)
-                calibre_match.glom_forslag()
+                calibre_match.ta_bort_forslag(issue_id)
                 besked = f"Ersatte filen i bok {book_id} med {issue.name}"
     return _calibrefragment(request, besked)
 
@@ -1169,7 +1169,7 @@ def ignore_calibre_match(request: Request, issue_id: int):
             return back("/calibre")
         issue.calibre_ignored = True
         session.add(issue)
-        calibre_match.glom_forslag()
+        calibre_match.ta_bort_forslag(issue_id)
         besked = f"{issue.name} lämnas okopplad"
     return _calibrefragment(request, besked)
 

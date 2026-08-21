@@ -120,8 +120,21 @@ _forslag_cache: dict[str, tuple[float, list["Forslag"]]] = {}
 
 
 def glom_forslag() -> None:
-    """Kasta cachade förslag, efter att ett beslut ändrat underlaget."""
+    """Kasta cachade förslag helt. Nästa hämtning matchar om allt."""
     _forslag_cache.clear()
+
+
+def ta_bort_forslag(issue_id: int) -> None:
+    """Plocka bort en avgjord utgåva ur cachen.
+
+    Ett beslut rör bara den utgåvan, så att kasta hela cachen vore att
+    matcha om hela biblioteket i onödan: uppmätt tog varje klick 5,6
+    sekunder av den anledningen.
+    """
+    for nyckel, (tid, forslag) in list(_forslag_cache.items()):
+        _forslag_cache[nyckel] = (
+            tid, [f for f in forslag if f.issue.id != issue_id]
+        )
 
 
 def cached_candidates(session, config: CalibreConfig) -> list[Forslag]:
@@ -166,6 +179,9 @@ def find_candidates(
 
     forslag: list[Forslag] = []
     for publication in repo.list_publications(session):
+        # Numren för hela titeln på en gång: en fråga per utgåva blev
+        # tusentals och tog sju sekunder.
+        nummer_per_datum = repo.issue_numbers_by_date(session, publication.title)
         for issue in repo.issues_without_calibre(session, publication.title_id):
             datum = issue.publication_date or ""
             # Grovsållning först: numret kostar en fråga per utgåva, och de
@@ -174,7 +190,7 @@ def find_candidates(
             # Numret kostar en fråga per utgåva, men det är enda vägen till
             # böcker utan utgivningsdatum, så det räcker inte att sålla på
             # datum här.
-            nummer = repo.issue_number_in_year(session, issue)
+            nummer = nummer_per_datum.get(datum)
             arnummer = (
                 (int(datum[:4]), nummer)
                 if nummer is not None and datum[:4].isdigit()

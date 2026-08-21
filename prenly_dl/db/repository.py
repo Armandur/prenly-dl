@@ -344,6 +344,35 @@ def issues_with_files(session: Session, title_id: int) -> list[Issue]:
     )
 
 
+def issue_numbers_by_date(session: Session, title: Title) -> dict[str, int]:
+    """Utgivningsdatum till nummer inom året, för hela titeln på en gång.
+
+    issue_number_in_year kostar en fråga per utgåva. Vid matchning mot
+    Calibre behövs numret för varenda utgåva, och då blev det tusentals
+    frågor: sidan tog sju sekunder.
+    """
+    if not title.catalogue_complete:
+        return {}
+    datum = list(
+        session.execute(
+            select(Issue.publication_date).where(
+                Issue.title_id == title.title_id,
+                Issue.disk_only.is_(False),
+                Issue.publication_date.is_not(None),
+            ).order_by(Issue.publication_date)
+        ).scalars()
+    )
+    nummer: dict[str, int] = {}
+    rakning: dict[str, int] = {}
+    for dag in datum:
+        ar = dag[:4]
+        if not ar.isdigit():
+            continue
+        rakning[ar] = rakning.get(ar, 0) + 1
+        nummer[dag] = rakning[ar]
+    return nummer
+
+
 def issue_number_in_year(session: Session, issue: Issue) -> int | None:
     """Utgåvans ordning inom sitt år, eller None när den inte går att lita på.
 
