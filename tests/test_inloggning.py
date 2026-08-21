@@ -230,3 +230,28 @@ def test_rutten_visar_serverns_besked_vid_fel_losenord(temp_env, monkeypatch):
         )
     assert "Inloggningen nekades" in svar.text
     assert "Invalid login credentials" in svar.text
+
+
+def test_inloggning_nollstaller_inte_sajtens_cdn(db, temp_env, monkeypatch):
+    """Två av sajterna har en egen cdn, och utan den går media inte att hämta."""
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+
+    monkeypatch.setattr(services, "fetch_client_key", lambda http, s: "NY")
+    monkeypatch.setattr(services, "create_session", lambda http, s, k: "anonym")
+    monkeypatch.setattr(services, "login", lambda http, s, k, t, u, p: "inloggad")
+
+    with db() as session:
+        repo.upsert_site(
+            session, "https://etidning.dalademokraten.se",
+            {"textalk-auth": "gammal", "auth": "gammal",
+             "cdn": "https://1123185085.rsc.cdn77.org"},
+        )
+        session.flush()
+
+        site = services.login_site(
+            session, "https://etidning.dalademokraten.se", "u", "p"
+        )
+
+    assert site.cdn == "https://1123185085.rsc.cdn77.org"
+    assert site.auth == "inloggad"

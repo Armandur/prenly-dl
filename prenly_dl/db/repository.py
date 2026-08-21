@@ -77,7 +77,11 @@ def upsert_site(session: Session, url: str, credentials: dict) -> Site:
         site = Site(url=url)
     site.textalk_auth = credentials.get("textalk-auth", credentials.get("textalk_auth", ""))
     site.auth = credentials.get("auth", "")
-    site.cdn = credentials.get("cdn", "") or ""
+    # Bara en angiven cdn skriver över. Inloggningen känner inte till
+    # sajtens cdn, och två av dem har en egen som annars hade nollställts.
+    ny_cdn = credentials.get("cdn", "") or ""
+    if ny_cdn:
+        site.cdn = ny_cdn
     session.add(site)
     session.flush()
     return site

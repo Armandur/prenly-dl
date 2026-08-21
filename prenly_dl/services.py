@@ -275,9 +275,10 @@ def login_site(
     token = create_session(http, adress, klientnyckel)
     token = login(http, adress, klientnyckel, token, username, password)
 
+    # Ingen cdn skickas: inloggningen känner inte till den, och en
+    # befintlig ska inte nollställas.
     site = repo.upsert_site(
-        session, adress,
-        {"textalk-auth": klientnyckel, "auth": token, "cdn": ""},
+        session, adress, {"textalk-auth": klientnyckel, "auth": token},
     )
     site.username = username
     site.password = password
