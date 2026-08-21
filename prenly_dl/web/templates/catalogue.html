@@ -13,5 +13,30 @@
   <a href="/uppgifter" role="button">Hantera uppgifter</a>
 </div>
 
+<div class="filter-bar">
+  <input id="katalog-search" type="search" placeholder="Sök publikation" autocomplete="off">
+</div>
+
 {% include "catalogue_table.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const sokfalt = document.getElementById("katalog-search");
+  if (!sokfalt) return;
+  function filtrera() {
+    const sokord = (sokfalt.value || "").trim().toLowerCase();
+    document.querySelectorAll("#katalogtabell tr.katalog-rad").forEach((rad) => {
+      const traff = !sokord || (rad.dataset.haystack || "").includes(sokord);
+      rad.style.display = traff ? "" : "none";
+    });
+  }
+  sokfalt.addEventListener("input", filtrera);
+  document.body.addEventListener("htmx:afterSwap", (handelse) => {
+    if (handelse.target.id === "katalogtabell") filtrera();
+  });
+  filtrera();
+})();
+</script>
 {% endblock %}

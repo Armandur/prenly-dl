@@ -15,7 +15,8 @@
     {% for rad in rader %}
       {% set title = rad.title %}
       {% set pub = rad.pub %}
-      <tr {% if not rad.lasbar %}class="rad-otillganglig"{% endif %}>
+      <tr class="katalog-rad{% if not rad.lasbar %} rad-otillganglig{% endif %}"
+          data-haystack="{{ (title.name|lower)|e }}">
         <td>
           <form method="post" action="/katalog/{{ pub.id }}/toggle" class="inline"
                 hx-post="/katalog/{{ pub.id }}/toggle" hx-target="#katalogtabell" hx-swap="outerHTML">

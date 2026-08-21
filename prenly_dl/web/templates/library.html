@@ -61,6 +61,7 @@
 </div>
 
 {% for folder, files in groups %}
+<section class="lib-grupp">
 <h2>{{ folder or "(rot)" }}</h2>
 <div class="scroll-x">
 <table>
@@ -76,6 +77,7 @@
   </tbody>
 </table>
 </div>
+</section>
 {% endfor %}
 {% else %}
 <article>Inga PDF:er hittade under <code>{{ output_dir }}</code>.</article>
@@ -96,6 +98,11 @@
       const traff = !q || (rad.dataset.haystack || "").includes(q);
       rad.style.display = traff ? "" : "none";
       if (traff) synliga += 1;
+    });
+    document.querySelectorAll(".lib-grupp").forEach((grupp) => {
+      const harSynligRad = Array.from(grupp.querySelectorAll("tr.lib-row"))
+        .some((rad) => rad.style.display !== "none");
+      grupp.style.display = harSynligRad ? "" : "none";
     });
     counter.textContent = synliga + " / " + totalt;
   }
