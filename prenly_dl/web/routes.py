@@ -28,7 +28,7 @@ from ..downloader import safe_filename
 from ..db import repository as repo
 from ..db.models import AuthStatus, IssueStatus
 from ..db.session import get_session
-from ..errors import PrenlyError
+from ..errors import PrenlyAuthError, PrenlyError
 from ..importer import (
     extract_configs,
     import_directory,
@@ -45,6 +45,7 @@ from ..services import (
     build_issue_preview,
     discover_titles,
     ensure_catalogue_depth,
+    login_site,
     poll_publication,
     publication_output_dir,
     update_publication_storage,
@@ -344,6 +345,40 @@ def _rendera_fynd(
         fyndfel=fyndfel, fyndvarning=fyndvarning, fyndsajter=fyndsajter,
         sajter=sajter,
     )
+
+
+@router.post("/credentials/login")
+def login_to_site(
+    request: Request,
+    url: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    """Logga in på en sajt med användarnamn och lösenord.
+
+    Alternativet till att köra konsolsnutten och klistra in tokens: med
+    uppgifterna sparade kan prenly-dl logga in igen när sessionen går ut.
+    """
+    if not url.strip() or not username.strip() or not password:
+        flash(request, "Fyll i adress, användarnamn och lösenord", "error")
+        return back("/credentials")
+    try:
+        with get_session() as session:
+            site = login_site(session, url, username.strip(), password)
+            adress = site.url
+            status = verify_site(session, site)
+    except PrenlyAuthError as error:
+        flash(request, f"Inloggningen nekades: {error}", "error")
+        return back("/credentials")
+    except PrenlyError as error:
+        flash(request, f"Kunde inte logga in: {error}", "error")
+        return back("/credentials")
+
+    if status is AuthStatus.OK:
+        flash(request, f"Inloggad på {adress}", "success")
+    else:
+        flash(request, f"Inloggad på {adress}, men uppgifterna gav ingen läsrätt", "info")
+    return back("/credentials")
 
 
 @router.post("/credentials/review", response_class=HTMLResponse)

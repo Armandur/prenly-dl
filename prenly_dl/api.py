@@ -7,6 +7,7 @@ explicit, och kastar undantag ur `prenly_dl.errors` vid fel.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,7 +15,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .errors import PrenlyError, PrenlyHTTPError, raise_for_rpc_error
+from .errors import PrenlyAuthError, PrenlyError, PrenlyHTTPError, raise_for_rpc_error
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,99 @@ def _get_json(session: requests.Session, url: str, headers: dict[str, str]) -> A
         return response.json()
     except ValueError as error:
         raise PrenlyHTTPError(response.status_code, url, f"Ogiltigt JSON-svar från {url}") from error
+
+
+# Klientnyckeln ligger i läsarens egen sida som PrenlyData.client.authToken.
+# Den är inte hemlig - vem som helst kan läsa den - men den är sajtens, och
+# utan den svarar API:t inte alls.
+_KLIENTNYCKEL = re.compile(r'"authToken"\s*:\s*"([^"]+)"')
+
+
+def fetch_client_key(session: requests.Session, site: str) -> str:
+    """Hämta sajtens klientnyckel ur läsarens startsida."""
+    url = site.rstrip("/") + "/"
+    try:
+        svar = session.get(url, headers={"User-Agent": USER_AGENT}, timeout=DEFAULT_TIMEOUT)
+        svar.raise_for_status()
+    except requests.RequestException as error:
+        raise PrenlyError(f"Kunde inte läsa {url}: {error}") from error
+    traff = _KLIENTNYCKEL.search(svar.text)
+    if not traff:
+        raise PrenlyError(f"Hittade ingen klientnyckel på {url}")
+    return traff.group(1)
+
+
+def _session_headers(site: str, client_key: str, token: str = "") -> dict[str, str]:
+    headers = {
+        "Accept": "*/*",
+        "User-Agent": USER_AGENT,
+        "Origin": site.rstrip("/"),
+        "Referer": site.rstrip("/") + "/",
+        "X-Textalk-Content-Client-Authorize": client_key,
+        "X-Textalk-Content-Product-Type": "webapp",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def create_session(session: requests.Session, site: str, client_key: str) -> str:
+    """Skapa en anonym session och returnera dess token.
+
+    Inloggningen sker i två steg: först en session, sedan en inloggning
+    på den. Utan det första steget finns ingen Bearer-token att logga in
+    med.
+    """
+    url = f"{CONTENT_BASE}/api/web-reader/v1/sessions"
+    try:
+        svar = session.post(url, headers=_session_headers(site, client_key), timeout=DEFAULT_TIMEOUT)
+    except requests.RequestException as error:
+        raise PrenlyError(f"Kunde inte skapa session: {error}") from error
+    if svar.status_code not in (200, 201):
+        raise PrenlyError(f"Kunde inte skapa session: {svar.status_code} {svar.text[:120]}")
+    token = (svar.json() or {}).get("token")
+    if not token:
+        raise PrenlyError("Sessionssvaret saknade token")
+    return str(token)
+
+
+def login(
+    session: requests.Session,
+    site: str,
+    client_key: str,
+    token: str,
+    username: str,
+    password: str,
+) -> str:
+    """Logga in på en befintlig session och returnera sessionstoken.
+
+    Servern svarar med en token när den byter ut sessionen; gör den inte
+    det är det den befintliga som blivit inloggad, och den gäller vidare.
+    """
+    url = f"{CONTENT_BASE}/api/web-reader/v1/sessions/authentications/username"
+    headers = _session_headers(site, client_key, token)
+    headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
+    try:
+        svar = session.post(
+            url, headers=headers, timeout=DEFAULT_TIMEOUT,
+            data={"username": username, "password": password, "ask_polite": "true"},
+        )
+    except requests.RequestException as error:
+        raise PrenlyError(f"Inloggningen misslyckades: {error}") from error
+    if svar.status_code in (400, 401, 403):
+        besked = ""
+        try:
+            besked = (svar.json() or {}).get("message") or ""
+        except ValueError:
+            pass
+        raise PrenlyAuthError(besked or "Fel användarnamn eller lösenord")
+    if not svar.ok:
+        raise PrenlyError(f"Inloggningen misslyckades: {svar.status_code} {svar.text[:120]}")
+    try:
+        ny = (svar.json() or {}).get("token")
+    except ValueError:
+        ny = None
+    return str(ny) if ny else token
 
 
 def get_context_token(session: requests.Session, creds: Credentials) -> str:

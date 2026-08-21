@@ -96,6 +96,10 @@ class Site(Base):
     textalk_auth: Mapped[str] = mapped_column(Text, nullable=False)
     auth: Mapped[str] = mapped_column(Text, nullable=False)
     cdn: Mapped[str] = mapped_column(String(255), default="")
+    # Sparas för att kunna logga in igen när sessionstoken gått ut. Ligger
+    # i klartext som resten av uppgifterna - databasfilen är hemligheten.
+    username: Mapped[str] = mapped_column(String(255), default="")
+    password: Mapped[str] = mapped_column(Text, default="")
     auth_status: Mapped[str] = mapped_column(String(32), default=AuthStatus.UNKNOWN.value)
     auth_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

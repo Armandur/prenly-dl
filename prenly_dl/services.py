@@ -11,11 +11,14 @@ from sqlalchemy.orm import Session
 from .api import (
     Credentials,
     build_session,
+    create_session,
+    fetch_client_key,
     front_page_headline,
     get_catalogue_issues,
     get_context_token,
     get_issue,
     get_titles,
+    login,
 )
 from .config import output_root
 from . import calibre, calibre_api, calibre_match
@@ -253,6 +256,61 @@ def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
     return nya, len(titles)
 
 
+def login_site(
+    session: Session, url: str, username: str, password: str
+) -> Site:
+    """Logga in på en sajt och spara uppgifterna.
+
+    Tre steg: klientnyckeln ur läsarens sida, en anonym session, och en
+    inloggning på den. Klientnyckeln är sajtens och byts sällan, medan
+    sessionstoken går ut - därför sparas användarnamn och lösenord, så
+    prenly-dl kan logga in igen utan att någon klistrar in en ny token.
+    """
+    adress = url.strip().rstrip("/")
+    if not adress.startswith(("http://", "https://")):
+        adress = f"https://{adress}"
+
+    http = build_session()
+    klientnyckel = fetch_client_key(http, adress)
+    token = create_session(http, adress, klientnyckel)
+    token = login(http, adress, klientnyckel, token, username, password)
+
+    site = repo.upsert_site(
+        session, adress,
+        {"textalk-auth": klientnyckel, "auth": token, "cdn": ""},
+    )
+    site.username = username
+    site.password = password
+    session.add(site)
+    session.flush()
+    return site
+
+
+def refresh_site_login(session: Session, site: Site) -> bool:
+    """Logga in igen med sparade uppgifter. Returnerar om det gick.
+
+    Anropas när en sajt slutat fungera: har den ett lösenord är en ny
+    session ett anrop bort, i stället för att någon ska öppna läsaren och
+    klistra in en token.
+    """
+    if not site.username or not site.password:
+        return False
+    http = build_session()
+    try:
+        klientnyckel = fetch_client_key(http, site.url)
+        token = create_session(http, site.url, klientnyckel)
+        token = login(http, site.url, klientnyckel, token, site.username, site.password)
+    except PrenlyError as error:
+        logger.warning("Kunde inte logga in på %s igen: %s", site.url, error)
+        return False
+    site.textalk_auth = klientnyckel
+    site.auth = token
+    session.add(site)
+    session.flush()
+    logger.info("Loggade in på %s igen med sparade uppgifter", site.url)
+    return True
+
+
 def verify_site(session: Session, site) -> AuthStatus:
     """Kontrollera sajtens uppgifter och uppdatera dess titlar."""
     http = build_session()
@@ -261,8 +319,20 @@ def verify_site(session: Session, site) -> AuthStatus:
         token = get_context_token(http, creds)
         titles = get_titles(http, creds, token)
     except PrenlyAuthError as error:
-        repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
-        return AuthStatus(site.auth_status)
+        # Sessionstoken går ut med tiden. Har sajten ett sparat lösenord
+        # är en ny session ett anrop bort, i stället för att någon ska
+        # öppna läsaren och klistra in en token.
+        if refresh_site_login(session, site):
+            creds = repo.credentials_for_site(site)
+            try:
+                token = get_context_token(http, creds)
+                titles = get_titles(http, creds, token)
+            except PrenlyError as andra_felet:
+                repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(andra_felet))
+                return AuthStatus(site.auth_status)
+        else:
+            repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+            return AuthStatus(site.auth_status)
     except PrenlyError as error:
         repo.set_site_status(session, site, AuthStatus.ERROR, str(error))
         return AuthStatus(site.auth_status)
