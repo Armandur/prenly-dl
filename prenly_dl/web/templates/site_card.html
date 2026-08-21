@@ -1,6 +1,21 @@
 {% set site = post.site %}
 <tr id="sajt-{{ site.id }}">
-  <td class="site-url">{{ site.url }}</td>
+  <td class="site-url">
+    {{ site.url }}
+    <br>
+    {# Två saker som avgör vad som händer när sessionen går ut: har sajten
+       ett lösenord loggar prenly-dl in själv, annars måste någon klistra
+       in en ny token. #}
+    {% if site.username %}
+      <span class="badge ok" title="prenly-dl loggar in igen automatiskt när sessionen går ut">inloggad</span>
+      <span class="muted">{{ site.username }}</span>
+    {% else %}
+      <span class="badge neutral" title="Sessionen måste förnyas för hand med konsolsnutten">tokens</span>
+    {% endif %}
+    {% if site.cdn and site.cdn.rstrip("/") != standard_cdn %}
+      <br><span class="muted" title="Media hämtas härifrån i stället för standardadressen">egen cdn: {{ site.cdn }}</span>
+    {% endif %}
+  </td>
   <td>
     <span class="badge {{ site.auth_status|status_class }}">{{ status_labels.get(site.auth_status, site.auth_status) }}</span>
     {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}

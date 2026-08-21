@@ -255,3 +255,41 @@ def test_inloggning_nollstaller_inte_sajtens_cdn(db, temp_env, monkeypatch):
 
     assert site.cdn == "https://1123185085.rsc.cdn77.org"
     assert site.auth == "inloggad"
+
+
+def test_sajtkortet_visar_hur_uppgifterna_kom_till(temp_env, monkeypatch):
+    """Skillnaden avgör vad som händer när sessionen går ut."""
+    from fastapi.testclient import TestClient
+    import prenly_dl.web.app as app_module
+    from prenly_dl.api import DEFAULT_CDN
+    from prenly_dl.db import repository as repo
+    from prenly_dl.db.session import get_session
+
+    monkeypatch.setattr(app_module, "start_scheduler", lambda: None)
+    monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+
+    with get_session() as session:
+        med_login = repo.upsert_site(
+            session, "https://etidning.dn.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        med_login.username = "hej@example.com"
+        med_login.password = "hemligt"
+        repo.upsert_site(
+            session, "https://hemslojd.prenly.com", {"textalk-auth": "k", "auth": "t"}
+        )
+        repo.upsert_site(
+            session, "https://etidning.dalademokraten.se",
+            {"textalk-auth": "k", "auth": "t", "cdn": "https://egen.cdn77.org"},
+        )
+        session.commit()
+
+    with TestClient(app_module.create_app()) as client:
+        text = client.get("/credentials").text
+
+    assert ">inloggad<" in text and "hej@example.com" in text
+    assert ">tokens<" in text
+    # Lösenordet får aldrig lämna databasen.
+    assert "hemligt" not in text
+    # Bara en avvikande cdn är värd att nämna.
+    assert "egen cdn: https://egen.cdn77.org" in text
+    assert DEFAULT_CDN not in text.split("egen cdn")[0].split("Sparade")[-1]

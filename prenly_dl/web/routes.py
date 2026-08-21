@@ -16,7 +16,7 @@ from fastapi.responses import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from ..api import Credentials, build_session
+from ..api import DEFAULT_CDN, Credentials, build_session
 from ..config import output_root, timezone_name
 from ..covers import (
     cached_calibre_cover,
@@ -177,7 +177,8 @@ def _sajtrad(request: Request, site_id: int, meddelande: str | None = None):
             return HTMLResponse("")
         kontext = _sajtkontext(session, site)
     return render(
-        request, "site_card.html", post=kontext, kortmeddelande=meddelande, flashes=[]
+        request, "site_card.html", post=kontext, kortmeddelande=meddelande,
+        standard_cdn=DEFAULT_CDN, flashes=[]
     )
 
 
@@ -317,6 +318,7 @@ def credentials_help(request: Request):
         sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=None,
+        standard_cdn=DEFAULT_CDN,
         fyndfel=None, fyndsajter=None, sajter=sajter,
     )
 
@@ -342,6 +344,7 @@ def _rendera_fynd(
         sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
+        standard_cdn=DEFAULT_CDN,
         fyndfel=fyndfel, fyndvarning=fyndvarning, fyndsajter=fyndsajter,
         sajter=sajter,
     )
