@@ -46,6 +46,17 @@
                   ingen fil hämtad
                 {% endif %}
               </span>
+              {# De äldre utgåvorna har inga artiklar i Prenly, så temat
+                 går inte att hämta och måste kunna skrivas för hand. #}
+              <form method="post" action="/issues/{{ post.issue.id }}/theme"
+                    class="temafalt" role="group"
+                    hx-post="/issues/{{ post.issue.id }}/theme"
+                    hx-target="#calibre-forslag" hx-swap="outerHTML">
+                <input name="theme" value="{{ post.issue.theme }}"
+                       placeholder="Tema, till exempel Sport"
+                       aria-label="Tema för {{ post.issue.name }}">
+                <button class="secondary outline">Spara</button>
+              </form>
             </div>
           </div>
         </div>
@@ -117,10 +128,16 @@
           <summary class="muted">{{ post.kandidater|length - 1 }} till som kan vara samma</summary>
           <div class="scroll-x">
           <table>
-            <thead><tr><th>Bok</th><th>Titel</th><th>Författare</th><th>Datum</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Bok</th><th>Titel</th><th>Författare</th><th>Datum</th><th></th></tr></thead>
             <tbody>
             {% for annan in post.kandidater[1:] %}
               <tr>
+                <td class="cover-cell">
+                  <img class="cover cover-small" loading="lazy"
+                       src="/calibre/cover/{{ annan.book_id }}"
+                       data-lightbox-src="/calibre/cover/{{ annan.book_id }}"
+                       alt="Omslag {{ annan.titel }}">
+                </td>
                 <td>{{ annan.book_id }}</td>
                 <td><a href="/calibre/file/{{ annan.book_id }}" target="_blank" rel="noopener">{{ annan.titel }}</a></td>
                 <td class="muted">{{ annan.forfattare }}</td>

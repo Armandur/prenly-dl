@@ -287,6 +287,11 @@ progress { margin: 0; width: 8rem; }
    på det som råkar stå ovanför, eftersom storleksvarningen bara finns
    ibland. */
 .matchning .card-actions { margin-top: 1rem; }
+.matchning .temafalt { margin: 0.6rem 0 0; max-width: 22rem; }
+/* Listan med övriga kandidater satt tätt mot knappraden ovanför. */
+.matchning details { margin-top: 1rem; }
+.matchning details table { margin-bottom: 0; }
+.matchning .temafalt input { font-size: 0.85rem; }
 .matchning .kortbesked { margin: 1rem 0 0; }
 
 @media (max-width: 60rem) {

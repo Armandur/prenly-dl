@@ -1172,6 +1172,30 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
     return _calibrefragment(request, besked)
 
 
+@router.post("/issues/{issue_id}/theme")
+def set_issue_theme(request: Request, issue_id: int, theme: str = Form("")):
+    """Sätt utgåvans tema för hand.
+
+    Temat hämtas normalt ur förstasidesartikelns rubrik, men de äldre
+    utgåvorna har inga artiklar alls i Prenly - bara skannade sidor. Utan
+    tema faller titelmönstret tillbaka på standarden.
+    """
+    with get_session() as session:
+        issue = repo.get_issue(session, issue_id)
+        if issue is None:
+            return back("/calibre")
+        issue.theme = theme.strip()
+        session.add(issue)
+        besked = (
+            f"{issue.name} har temat {issue.theme}"
+            if issue.theme
+            else f"{issue.name} har inget tema"
+        )
+    # Titeln ändras av temat, så matchningen måste göras om.
+    calibre_match.glom_forslag()
+    return _calibrefragment(request, besked)
+
+
 @router.post("/issues/{issue_id}/calibre/ignore")
 def ignore_calibre_match(request: Request, issue_id: int):
     """Ingen av kandidaterna var rätt. Utgåvan ska inte komma tillbaka."""

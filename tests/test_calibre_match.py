@@ -379,3 +379,25 @@ def test_kandidaten_bar_med_sig_storleksjamforelsen(db, temp_env, bibliotek):
         forslag = calibre_match.find_candidates(session, KONFIG)
 
     assert forslag[0].kandidater[0].samma_storlek is True
+
+
+def test_temat_gar_att_satta_for_hand(db, temp_env, bibliotek, monkeypatch):
+    """De äldre utgåvorna har inga artiklar i Prenly, bara skannade sidor."""
+    issue_id = _uppsatt(db, monkeypatch)
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/issues/{issue_id}/theme", data={"theme": "  Stickspår  "},
+            headers={"HX-Request": "true"},
+        )
+
+    assert svar.status_code == 200
+    with db() as session:
+        assert repo.get_issue(session, issue_id).theme == "Stickspår"
+
+    # Tomt fält tar bort temat igen.
+    with _klient(temp_env, monkeypatch) as client:
+        client.post(f"/issues/{issue_id}/theme", data={"theme": ""},
+                    headers={"HX-Request": "true"})
+    with db() as session:
+        assert repo.get_issue(session, issue_id).theme == ""
