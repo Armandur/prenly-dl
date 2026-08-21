@@ -346,3 +346,14 @@ button.htmx-request::after {
   form.htmx-request button::after,
   button.htmx-request::after { animation-duration: 2s; }
 }
+
+/* Temafältet i utgåvetabellen. Raden är trång, så fältet ska ta liten
+   plats och inte tvinga kolumnen bredare än utgåvans namn. */
+.temafalt-rad { margin: 0.3rem 0 0; max-width: 14rem; }
+.temafalt-rad input {
+  margin: 0; padding: 0.15rem 0.4rem; font-size: 0.75rem; height: auto;
+}
+.temafalt-rad button {
+  flex: 0 0 auto; width: auto; white-space: nowrap;
+  padding: 0.15rem 0.5rem; font-size: 0.75rem;
+}

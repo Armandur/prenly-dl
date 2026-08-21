@@ -54,7 +54,7 @@
   <thead>
     <tr>
       <th><input type="checkbox" id="valj-utgavor" aria-label="Markera alla på sidan"></th>
-      <th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Sidor</th><th>Fil</th><th></th>
+      <th></th><th>Utgåva</th><th>Datum</th><th>Status</th><th>Calibre</th><th>Sidor</th><th>Fil</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -77,7 +77,20 @@
           <span class="cover cover-small cover-missing"></span>
         {% endif %}
       </td>
-      <td>{{ issue.name }}</td>
+      <td>
+        {{ issue.name }}
+        {# Temat går inte att hämta för äldre utgåvor, som saknar
+           artiklar i Prenly, men det styr titeln i Calibre. #}
+        <form method="post" action="/issues/{{ issue.id }}/theme"
+              class="temafalt-rad" role="group"
+              hx-post="/issues/{{ issue.id }}/theme"
+              hx-target="#utgavor" hx-swap="outerHTML">
+          <input type="hidden" name="page" value="{{ page }}">
+          <input name="theme" value="{{ issue.theme }}" placeholder="tema"
+                 aria-label="Tema för {{ issue.name }}">
+          <button class="secondary outline">Spara</button>
+        </form>
+      </td>
       <td>{{ issue.publication_date or "-" }}</td>
       <td>
         {% if issue.disk_only %}
@@ -85,8 +98,21 @@
         {% else %}
           <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
         {% endif %}
-        {% if issue.calibre_id %}<br><span class="muted">Calibre {{ issue.calibre_id }}</span>{% endif %}
         {% if issue.error %}<br><span class="muted">{{ issue.error }}</span>{% endif %}
+      </td>
+      <td class="muted">
+        {% set status = calibre_status.get(issue.id) %}
+        {% if status and status.book_id %}
+          <a href="/calibre/file/{{ status.book_id }}" target="_blank" rel="noopener"
+             title="{{ status.titel }}">bok {{ status.book_id }}</a>
+          {% if status.samma_storlek is false %}
+            <br><span class="badge warn" title="Filen i Calibre är {{ status.storlek|human_size }}">annan fil</span>
+          {% elif status.samma_storlek %}
+            <br><span class="badge ok">samma fil</span>
+          {% endif %}
+        {% elif status and status.har_forslag %}
+          <a href="/calibre">förslag finns</a>
+        {% else %}-{% endif %}
       </td>
       <td>{{ issue.page_count or "-" }}</td>
       <td class="muted" title="{{ issue.file_path or "" }}">
@@ -140,7 +166,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="8">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
+    <tr><td colspan="9">Inga kända utgåvor. Kör en katalogkontroll.</td></tr>
   {% endfor %}
   </tbody>
 </table>

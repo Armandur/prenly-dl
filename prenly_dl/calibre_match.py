@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import calibre_api
-from .calibre import CalibreConfig, format_title
+from .calibre import CalibreConfig, CalibreError, format_title
 from .db import repository as repo
 from .db.models import Issue, Publication
 
@@ -268,6 +268,51 @@ def find_candidates(
                 )
                 return forslag
     return forslag
+
+
+@dataclass
+class CalibreStatus:
+    """Vad Calibre vet om en utgåva, för utgåvetabellen."""
+
+    book_id: int | None = None
+    titel: str = ""
+    storlek: int | None = None
+    samma_storlek: bool | None = None
+    # Utgåvan är inte kopplad men har förslag i matchningsvyn.
+    har_forslag: bool = False
+
+
+def status_per_utgava(
+    session, config: CalibreConfig, issues
+) -> dict[int, CalibreStatus]:
+    """Calibre-status för en handfull utgåvor, för publikationens tabell.
+
+    Bygger på samma cachade bibliotek som matchningsvyn, så kostnaden är
+    en uppslagning per rad.
+    """
+    if not config.configured:
+        return {}
+    try:
+        bibliotek = calibre_api.fetch_library(config)
+        med_forslag = {f.issue.id for f in cached_candidates(session, config)}
+    except CalibreError as error:
+        logger.warning("Kunde inte läsa Calibre för utgåvetabellen: %s", error)
+        return {}
+
+    status: dict[int, CalibreStatus] = {}
+    for issue in issues:
+        if issue.calibre_id:
+            bok = bibliotek.bok(issue.calibre_id) or {}
+            i_calibre = calibre_api.bok_storlek(bok)
+            status[issue.id] = CalibreStatus(
+                book_id=issue.calibre_id,
+                titel=str(bok.get("title") or ""),
+                storlek=i_calibre,
+                samma_storlek=_samma_storlek(_lokal_storlek(issue), i_calibre),
+            )
+        elif issue.id in med_forslag:
+            status[issue.id] = CalibreStatus(har_forslag=True)
+    return status
 
 
 def tillatna_bocker(session, config: CalibreConfig) -> set[int]:

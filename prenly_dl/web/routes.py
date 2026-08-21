@@ -594,6 +594,9 @@ def _utgavekontext(session, publication, page: int) -> dict:
         # Biblioteksrutten vill ha en sökväg relativ utdatakatalogen, och
         # länken ska bara finnas när filen faktiskt är kvar på disk.
         issue.rel_path = _bibliotekssokvag(issue.file_path)
+    calibre_status = calibre_match.status_per_utgava(
+        session, calibre.load_config(session), issues
+    )
     return {
         "publication": publication,
         "issues": issues,
@@ -604,6 +607,7 @@ def _utgavekontext(session, publication, page: int) -> dict:
         ),
         "page": page,
         "page_size": PAGE_SIZE,
+        "calibre_status": calibre_status,
         "total_issues": total,
         # Diskfynden är utgåvor användaren äger, men inte katalogutgåvor.
         "disk_antal": total - katalogantal,
@@ -1173,12 +1177,21 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
 
 
 @router.post("/issues/{issue_id}/theme")
-def set_issue_theme(request: Request, issue_id: int, theme: str = Form("")):
+def set_issue_theme(
+    request: Request,
+    issue_id: int,
+    theme: str = Form(""),
+    page: int = Form(0),
+):
     """Sätt utgåvans tema för hand.
 
     Temat hämtas normalt ur förstasidesartikelns rubrik, men de äldre
     utgåvorna har inga artiklar alls i Prenly - bara skannade sidor. Utan
     tema faller titelmönstret tillbaka på standarden.
+
+    Fältet finns på två ställen. Ett page-värde betyder att det kom från
+    publikationens utgåvetabell, som ska renderas om i stället för
+    matchningsvyn.
     """
     with get_session() as session:
         issue = repo.get_issue(session, issue_id)
@@ -1191,8 +1204,22 @@ def set_issue_theme(request: Request, issue_id: int, theme: str = Form("")):
             if issue.theme
             else f"{issue.name} har inget tema"
         )
+        publication = (
+            repo.get_publication_for_title(session, issue.title_id) if page else None
+        )
+        slug = publication.slug if publication else ""
+        kontext = _utgavekontext(session, publication, page) if publication else None
     # Titeln ändras av temat, så matchningen måste göras om.
     calibre_match.glom_forslag()
+
+    if kontext is not None:
+        if not request.headers.get("HX-Request"):
+            flash(request, besked, "success")
+            return back(f"/publications/{slug}?page={page}")
+        kontext.pop("_fel", None)
+        return render(
+            request, "issues_section.html", kortmeddelande=besked, flashes=[], **kontext
+        )
     return _calibrefragment(request, besked)
 
 

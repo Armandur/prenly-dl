@@ -700,13 +700,30 @@ def test_hamtad_utgava_saknar_ladda_ner_knappen(client):
         klar.status = IssueStatus.DONE.value
         ny, _ = repo.upsert_issue(session, publication, {"uid": "2", "name": "ny"})
         session.add(klar)
+        session.flush()
+        klar_id, ny_id = klar.id, ny.id
 
     text = client.get(f"/publications/{slug}").text
-    rad_klar = text[text.index("klar"):text.index("klar") + 1400]
-    rad_ny = text[text.index(">ny<") if ">ny<" in text else text.index("ny"):][:1400]
-    assert "Tvinga om" in rad_klar
-    assert "Ladda ner" not in rad_klar.split("Tvinga om")[0]
-    assert "Ladda ner" in rad_ny
+
+    def rad(issue_id: int) -> str:
+        """Utgåvans egen tabellrad, oavsett hur mycket den innehåller.
+
+        Testet klippte tidigare på ett fast antal tecken, och föll så
+        fort raden fick något nytt i sig.
+        """
+        rader = [
+            r for r in text.split("<tr")
+            if f'class="valj-utgava" form="batch-utgavor"\n               name="valda" value="{issue_id}"' in r
+            or f'value="{issue_id}"\n' in r
+        ]
+        assert len(rader) == 1, f"hittade {len(rader)} rader för utgåva {issue_id}"
+        return rader[0]
+
+    assert f"/issues/{klar_id}/download" in rad(klar_id), "Tvinga om ska finnas"
+    # Hämtad utgåva har bara ett formulär: Tvinga om.
+    assert rad(klar_id).count(f"/issues/{klar_id}/download") == 2
+    # Ohämtad har två: Ladda ner och Tvinga om.
+    assert rad(ny_id).count(f"/issues/{ny_id}/download") == 4
 
 
 def test_hamtad_fil_kan_oppnas_fran_utgaveraden(temp_env, client):
