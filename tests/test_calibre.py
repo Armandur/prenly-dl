@@ -556,3 +556,52 @@ def test_numret_sparras_nar_katalogen_inte_ar_komplett(db, temp_env):
 
         for issue in repo.list_issues(session, publication.id):
             assert repo.issue_number_in_year(session, issue) is None
+
+
+def test_temajobbet_fyller_pa_det_som_gar_att_hamta(db, temp_env, monkeypatch):
+    """Uppmätt mot Prenly: utgåvor före 2021 har inga artiklar alls.
+
+    Jobbet ska ta de teman som finns och rapportera resten, inte spricka.
+    """
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+    from prenly_dl.db.models import Job, JobStatus
+
+    with db() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        site.auth_status = "ok"
+        publication, _ = repo.upsert_publication(session, site, 4019, "Tidningen")
+        publication.enabled = True
+        for uid, dag in [("ny", "2024-04-02"), ("gammal", "2014-01-29")]:
+            repo.upsert_issue(
+                session, publication,
+                {"uid": uid, "name": dag, "publication_date": dag},
+            )
+        job = repo.enqueue_themes(session, publication.id)
+        job_id = job.id
+
+    # Den äldre utgåvan har inga artiklar, som de riktiga före 2021.
+    monkeypatch.setattr(
+        services, "get_issue",
+        lambda http, creds, title_id, uid: (
+            {"sections": [{"slug": "forstasidan", "article_ids": [1]}],
+             "articles": [{"id": 1, "headline": "Hitta gnistan!"}]}
+            if uid == "ny" else {"sections": [], "articles": []}
+        ),
+    )
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    with db() as session:
+        job = session.get(Job, job_id)
+        assert job.status == JobStatus.DONE.value
+        assert "1 teman hämtade" in job.message
+        assert "1 utgåvor saknar artiklar" in job.message
+        teman = {
+            i.publication_date: i.theme
+            for i in repo.list_issues(session, repo.list_publications(session)[0].id)
+        }
+        assert teman == {"2024-04-02": "Hitta gnistan!", "2014-01-29": ""}

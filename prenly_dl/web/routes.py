@@ -732,6 +732,27 @@ def edit_publication(
     return back(f"/publications/{slug}")
 
 
+@router.post("/publications/{publication_id}/themes")
+def fetch_themes(request: Request, publication_id: int):
+    """Köa en genomgång som fyller på utgåvornas teman."""
+    with get_session() as session:
+        publication = repo.get_publication(session, publication_id)
+        if publication is None:
+            return back("/")
+        antal = len(repo.issues_without_theme(session, publication.title_id))
+        job = repo.enqueue_themes(session, publication_id)
+        besked = (
+            "Genomgången är redan igång"
+            if job is None
+            else f"Köade hämtning av tema för {antal} utgåvor"
+        )
+    svar, slug = _publikationsfragment(request, publication_id, besked)
+    if svar is not None:
+        return svar
+    flash(request, besked, "success")
+    return back(f"/publications/{slug}")
+
+
 @router.post("/publications/{publication_id}/catalogue")
 def fetch_catalogue(request: Request, publication_id: int):
     """Köa en full kataloghämtning."""

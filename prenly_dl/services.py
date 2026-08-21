@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session
 from .api import (
     Credentials,
     build_session,
+    front_page_headline,
     get_catalogue_issues,
     get_context_token,
+    get_issue,
     get_titles,
 )
 from .config import output_root
@@ -499,6 +501,58 @@ def run_catalogue_job(session: Session, job: Job) -> str:
     return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
 
 
+def run_themes_job(session: Session, job: Job) -> str:
+    """Hämta utgåvornas tema, alltså förstasidesartikelns rubrik.
+
+    Temat kommer normalt med när en utgåva laddas ner, men de som aldrig
+    hämtats saknar det - och det styr titeln i Calibre. De äldsta
+    utgåvorna har inga artiklar alls i Prenly, bara skannade sidor, och
+    för dem finns inget tema att hämta.
+    """
+    publication = (
+        repo.get_publication(session, job.publication_id) if job.publication_id else None
+    )
+    if publication is None:
+        raise PrenlyError("Jobbet saknar publikation")
+
+    utgavor = repo.issues_without_theme(session, publication.title_id)
+    if not utgavor:
+        return "Alla utgåvor har redan ett tema"
+
+    http = build_session()
+    site = _site_for_publication(session, publication)
+    creds = repo.credentials_for_site(site)
+
+    hittade, tomma, fel = 0, 0, 0
+    for gjort, issue in enumerate(utgavor, start=1):
+        try:
+            tema = front_page_headline(get_issue(http, creds, publication.title_id, issue.uid))
+        except PrenlyError as error:
+            # En trasig utgåva ska inte fälla genomgången av de andra.
+            logger.warning("Kunde inte läsa %s: %s", issue.name, error)
+            fel += 1
+            continue
+        if tema:
+            issue.theme = tema
+            session.add(issue)
+            hittade += 1
+        else:
+            tomma += 1
+        # Förloppet skrivs i en egen session, så den egna måste vara
+        # tömd först: annars håller den skrivlåset och den andra får
+        # "database is locked".
+        if gjort % 10 == 0 or gjort == len(utgavor):
+            session.commit()
+            repo.update_job_progress(job.id, gjort, len(utgavor))
+
+    delar = [f"{hittade} teman hämtade"]
+    if tomma:
+        delar.append(f"{tomma} utgåvor saknar artiklar i Prenly")
+    if fel:
+        delar.append(f"{fel} gick inte att läsa")
+    return ", ".join(delar)
+
+
 def run_download_job(session: Session, job: Job) -> str:
     """Ladda ner utgåvan som jobbet pekar på."""
     issue: Issue | None = repo.get_issue(session, job.issue_id) if job.issue_id else None
@@ -656,6 +710,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_catalogue_job(session, job)
         elif job.type == JobType.SITE_SYNC.value:
             summary = run_site_sync_job(session, job)
+        elif job.type == JobType.THEMES.value:
+            summary = run_themes_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

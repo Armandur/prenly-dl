@@ -53,6 +53,9 @@ class JobType(str, Enum):
     DOWNLOAD = "download"
     CATALOGUE = "catalogue"
     SITE_SYNC = "site_sync"
+    # Hämtar utgåvornas tema, alltså förstasidans rubrik, för utgåvor som
+    # saknar det. Ett anrop per utgåva, så det hör hemma i kön.
+    THEMES = "themes"
 
 
 class Site(Base):

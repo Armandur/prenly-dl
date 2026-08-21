@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..api import Credentials
@@ -569,6 +569,34 @@ def enqueue_catalogue(session: Session, publication_id: int) -> Job | None:
     session.add(job)
     session.flush()
     return job
+
+
+def enqueue_themes(session: Session, publication_id: int) -> Job | None:
+    pagaende = session.execute(select(Job).where(
+        Job.type == JobType.THEMES.value,
+        Job.publication_id == publication_id,
+        Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
+    )).first()
+    if pagaende:
+        return None
+    job = Job(type=JobType.THEMES.value, status=JobStatus.QUEUED.value,
+              publication_id=publication_id)
+    session.add(job)
+    session.flush()
+    return job
+
+
+def issues_without_theme(session: Session, title_id: int) -> list[Issue]:
+    """Utgåvor vars tema inte är hämtat, nyast först."""
+    return list(
+        session.execute(
+            select(Issue).where(
+                Issue.title_id == title_id,
+                Issue.disk_only.is_(False),
+                or_(Issue.theme == "", Issue.theme.is_(None)),
+            ).order_by(Issue.publication_date.desc())
+        ).unique().scalars()
+    )
 
 
 def issue_years(session: Session, publication_id: int) -> list[str]:
