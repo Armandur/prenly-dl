@@ -333,6 +333,17 @@ def count_title_issues(session: Session, title_id: int) -> int:
     ).scalar_one()
 
 
+def issues_with_files(session: Session, title_id: int) -> list[Issue]:
+    """Titelns utgåvor som har en fil på disk, diskfynden inräknade."""
+    return list(
+        session.execute(
+            select(Issue).where(
+                Issue.title_id == title_id, Issue.file_path.is_not(None)
+            )
+        ).unique().scalars()
+    )
+
+
 def get_issue(session: Session, issue_id: int) -> Issue | None:
     return session.execute(
         select(Issue).where(Issue.id == issue_id)

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from sqlalchemy import select
 
 from ..config import output_root
 from ..downloader import TEMP_PREFIX
 from ..db import repository as repo
-from ..db.models import IssueStatus, utcnow
+from ..db.models import Issue, IssueStatus, utcnow
 from ..downloader import safe_filename
 from ..services import publication_output_dir
 
@@ -31,6 +34,30 @@ class LibraryImportReport:
     matched: list[dict]
     misplaced: list[dict]
     unmatched: list[str]
+    # Filer som blivit utgåvor utan motsvarighet i katalogen.
+    disk_only: list[dict] = field(default_factory=list)
+
+
+DATUM = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def derive_issue_name(filename: str, prefix: str) -> str:
+    """Utgåvans namn ur ett filnamn, genom att skala bort prefixet.
+
+    Filnamnet skapades av safe_filename på hela strängen prefix+namn, så
+    prefixet går bara att skala bort när det överlevt oförändrat. Gör det
+    inte det blir hela filnamnet namnet - hellre en rad med konstigt namn
+    än ingen rad alls.
+    """
+    stam = filename[:-4] if filename.lower().endswith(".pdf") else filename
+    # Prefixet måste saneras som det står i filnamnet, alltså följt av
+    # namnet. safe_filename på prefixet ensamt trimmar dess avslutande
+    # blanksteg och lämnar då kvar det i namnet.
+    provnamn = safe_filename(f"{prefix}X") if prefix else ""
+    sakert = provnamn[:-1] if provnamn.endswith("X") else ""
+    if sakert and stam.startswith(sakert):
+        return stam[len(sakert):] or stam
+    return stam
 
 
 def scan_library(root: Path | None = None) -> list[LibraryFile]:
@@ -94,17 +121,20 @@ def import_existing_files(session, root: Path | None = None) -> LibraryImportRep
     base = Path(root) if root else output_root()
     expected: dict[Path, list] = {}
     by_name: dict[str, list] = {}
+    # Katalogen avgör vilken publikation en oväntad fil hör till.
+    dirs: dict[Path, object] = {}
     for publication in repo.list_publications(session):
         publication_dir = publication_output_dir(publication)
         if root is not None:
             publication_dir = base / publication_dir.relative_to(output_root())
+        dirs[publication_dir.resolve()] = publication
         for issue in publication.title.issues:
             filename = f"{safe_filename(f'{publication.prefix}{issue.name}')}.pdf"
             path = (publication_dir / filename).resolve()
             expected.setdefault(path, []).append((publication, issue))
             by_name.setdefault(filename, []).append((publication, issue))
 
-    report = LibraryImportReport([], [], [])
+    report = LibraryImportReport([], [], [], [])
     for item in scan_library(base):
         path = (base / item.rel_path).resolve()
         candidates = expected.get(path, [])
@@ -133,9 +163,62 @@ def import_existing_files(session, root: Path | None = None) -> LibraryImportRep
                     ],
                 }
             )
-        else:
+            continue
+        publication = dirs.get(path.parent)
+        if publication is None:
             report.unmatched.append(item.rel_path)
+            continue
+        issue = _diskpost(session, publication, item.name, path)
+        report.disk_only.append(
+            {
+                "publication": publication.name,
+                "issue": issue.name,
+                "file_path": item.rel_path,
+            }
+        )
     return report
+
+
+def _diskpost(session, publication, filename: str, path: Path) -> Issue:
+    """Utgåvan bakom en fil som katalogen inte känner till.
+
+    Uid:t byggs på det härledda namnet, inte filnamnet: ett prefixbyte
+    döper om filen, och ett filnamnsbaserat uid hade då gett en andra rad
+    vid nästa import.
+    """
+    namn = derive_issue_name(filename, publication.prefix)
+    # Frågan går till databasen och inte via title.issues: relationen kan
+    # vara läst innan raderna skapades, och en importkörning skapar dem
+    # medan den pågår.
+    kand = session.execute(
+        select(Issue).where(
+            Issue.title_id == publication.title_id,
+            Issue.name == namn,
+            Issue.disk_only.is_(False),
+        )
+    ).unique().scalars().first()
+    if kand is not None:
+        # Utgåvan finns i katalogen men filen heter något annat, troligen
+        # från ett tidigare prefix. Den hör till den riktiga posten.
+        issue = kand
+    else:
+        uid = f"disk:{namn}"
+        issue = session.execute(
+            select(Issue).where(
+                Issue.title_id == publication.title_id, Issue.uid == uid
+            )
+        ).unique().scalar_one_or_none() or Issue(
+            title_id=publication.title_id, uid=uid, disk_only=True
+        )
+        issue.name = namn
+        traff = DATUM.search(namn)
+        issue.publication_date = traff.group(0) if traff else None
+    issue.status = IssueStatus.DONE.value
+    issue.file_path = str(path)
+    issue.downloaded_at = issue.downloaded_at or utcnow()
+    session.add(issue)
+    session.flush()
+    return issue
 
 def resolve_file(rel_path: str, root: Path | None = None) -> Path | None:
     """Slå upp en fil i biblioteket, med skydd mot vägar ut ur katalogen."""

@@ -122,7 +122,9 @@ def update_publication_storage(
     paths: list[tuple[Issue, Path, Path]] = []
     if old_dir.is_dir():
         old_root = old_dir.resolve()
-        for issue in publication.title.issues:
+        # Frågan går till databasen: title.issues kan vara läst innan
+        # importen skapade diskposterna, och då hade de inte döpts om.
+        for issue in repo.issues_with_files(session, publication.title_id):
             if not issue.file_path:
                 continue
             path = Path(issue.file_path)

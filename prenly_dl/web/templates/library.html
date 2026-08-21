@@ -26,8 +26,18 @@
     {% endfor %}
     </ul>
   {% endif %}
+  {% if import_report.disk_only %}
+    <p>{{ import_report.disk_only|length }} filer finns inte i katalogen och
+       visas nu som utgåvor märkta "bara på disk":</p>
+    <ul>
+    {% for item in import_report.disk_only %}
+      <li><code>{{ item.file_path }}</code> som {{ item.publication }} / {{ item.issue }}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
   {% if import_report.unmatched %}
-    <p>{{ import_report.unmatched|length }} filer matchade ingen känd utgåva:</p>
+    <p>{{ import_report.unmatched|length }} filer ligger utanför alla
+       publikationskataloger och gick inte att placera:</p>
     <ul>{% for path in import_report.unmatched %}<li><code>{{ path }}</code></li>{% endfor %}</ul>
   {% endif %}
 </article>
