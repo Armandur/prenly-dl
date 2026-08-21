@@ -195,6 +195,25 @@ def get_page_checksums(issue_data: dict) -> dict[str, str]:
     return dict(sorted(checksums.items(), key=lambda kv: int(kv[0])))
 
 
+def front_page_headline(issue_data: dict) -> str:
+    """Utgåvans tema, alltså förstasidesartikelns rubrik.
+
+    Katalogen ger bara datum som namn för en del titlar, men numret har
+    ofta ett tema som står som rubrik på förstasidan. Verifierat mot
+    Tidningen Hemslöjd 2026-08-21: fyra av fyra utgåvor gav exakt det
+    tema numret marknadsförs med.
+    """
+    artiklar = {a.get("id"): a for a in issue_data.get("articles", [])}
+    for section in issue_data.get("sections", []):
+        if section.get("slug") != "forstasidan":
+            continue
+        for article_id in section.get("article_ids", []):
+            rubrik = (artiklar.get(article_id) or {}).get("headline")
+            if rubrik:
+                return str(rubrik).strip()
+    return ""
+
+
 def download_media(
     session: requests.Session,
     creds: Credentials,

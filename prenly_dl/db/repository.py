@@ -344,6 +344,33 @@ def issues_with_files(session: Session, title_id: int) -> list[Issue]:
     )
 
 
+def issue_number_in_year(session: Session, issue: Issue) -> int | None:
+    """Utgåvans ordning inom sitt år, eller None när den inte går att lita på.
+
+    Numret räknas ur katalogen, så det kräver att hela året finns hämtat.
+    Är katalogen ofullständig kan årets tidiga nummer saknas, och då hade
+    numreringen blivit fel utan att det syns.
+    """
+    if not issue.publication_date or not issue.title.catalogue_complete:
+        return None
+    ar = issue.publication_date[:4]
+    if not ar.isdigit():
+        return None
+    datum = list(
+        session.execute(
+            select(Issue.publication_date).where(
+                Issue.title_id == issue.title_id,
+                Issue.disk_only.is_(False),
+                Issue.publication_date.like(f"{ar}%"),
+            ).order_by(Issue.publication_date)
+        ).scalars()
+    )
+    try:
+        return datum.index(issue.publication_date) + 1
+    except ValueError:
+        return None
+
+
 def get_issue(session: Session, issue_id: int) -> Issue | None:
     return session.execute(
         select(Issue).where(Issue.id == issue_id)

@@ -20,9 +20,13 @@
     <input name="calibre_title" value="{{ publication.calibre_title }}"
            placeholder="{{ standard_calibre_title }}">
     <small class="muted">
-      Fälten <code>{publikation}</code>, <code>{utgåva}</code> och
-      <code>{datum}</code> ersätts. Tomt ger
+      Fälten <code>{publikation}</code>, <code>{utgåva}</code>,
+      <code>{datum}</code>, <code>{år}</code>, <code>{nummer}</code> och
+      <code>{tema}</code> ersätts. Tomt ger
       <code>{{ standard_calibre_title }}</code>.
+      <br>Temat är förstasidans rubrik och fylls i vid nedladdning.
+      Numret är utgåvans ordning inom året och kräver att hela katalogen
+      är hämtad. Saknas ett fält mönstret använder används standarden.
     </small>
   </label>
   <label>Bilaga till

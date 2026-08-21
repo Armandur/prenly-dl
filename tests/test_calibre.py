@@ -449,3 +449,104 @@ def test_publikationens_monster_anvands_vid_nedladdning(db, monkeypatch):
 
     add = korda[0]
     assert add[add.index("--title") + 1] == "2026-01-01 (Tidningen)"
+
+
+# --------------------------------------------------------------------------
+# Tema och nummer
+# --------------------------------------------------------------------------
+
+
+def test_temat_ar_forstasidans_rubrik():
+    """Uppmätt mot Prenly: förstasidesartikelns rubrik är numrets tema."""
+    from prenly_dl.api import front_page_headline
+
+    data = {
+        "sections": [
+            {"slug": "annat", "article_ids": [2]},
+            {"slug": "forstasidan", "article_ids": [1]},
+        ],
+        "articles": [
+            {"id": 1, "headline": "Hitta gnistan!"},
+            {"id": 2, "headline": "Notiser"},
+        ],
+    }
+    assert front_page_headline(data) == "Hitta gnistan!"
+    assert front_page_headline({"articles": [], "sections": []}) == ""
+    # En sektion utan artikel får inte ge fel rubrik.
+    assert front_page_headline(
+        {"sections": [{"slug": "forstasidan", "article_ids": []}],
+         "articles": [{"id": 9, "headline": "Fel"}]}
+    ) == ""
+
+
+def test_monstret_ger_samma_namn_som_biblioteket_redan_har():
+    assert calibre.format_title(
+        "{år}-{nummer} - {tema}",
+        publikation="Tidningen Hemslöjd", utgava="2024-04-02",
+        datum="2024-04-02", tema="Hitta gnistan!", nummer=2,
+    ) == "2024-2 - Hitta gnistan!"
+
+
+def test_monster_med_tomt_falt_faller_tillbaka():
+    """Utan temat hade mönstret gett strängen '2024- -'."""
+    assert calibre.format_title(
+        "{år}-{nummer} - {tema}",
+        publikation="Tidningen Hemslöjd", utgava="2024-04-02",
+        datum="2024-04-02", tema="", nummer=None,
+    ) == "Tidningen Hemslöjd 2024-04-02"
+
+
+def test_serienumret_blir_ar_punkt_nummer():
+    assert calibre.series_index("2024-04-02", 2) == "2024.2"
+    # Utan nummer får datumet duga.
+    assert calibre.series_index("2024-04-02") == "20240402"
+
+
+def test_numret_ar_utgavans_ordning_inom_aret(db, temp_env):
+    from prenly_dl.db import repository as repo
+
+    with db() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        publication, _ = repo.upsert_publication(session, site, 4019, "Hemslöjd")
+        # Uppmätta utgivningsdatum för Tidningen Hemslöjd 2024.
+        datum = ["2024-02-05", "2024-04-02", "2024-05-27",
+                 "2024-08-22", "2024-10-11", "2024-12-03"]
+        for index, dag in enumerate(datum):
+            repo.upsert_issue(
+                session, publication,
+                {"uid": str(index), "name": dag, "publication_date": dag},
+            )
+        publication.catalogue_complete = True
+        session.flush()
+
+        nummer = {
+            i.publication_date: repo.issue_number_in_year(session, i)
+            for i in repo.list_issues(session, publication.id)
+        }
+
+    assert nummer["2024-04-02"] == 2
+    assert nummer["2024-10-11"] == 5
+    assert nummer["2024-12-03"] == 6
+
+
+def test_numret_sparras_nar_katalogen_inte_ar_komplett(db, temp_env):
+    """Halva året i katalogen hade gett fel nummer utan att det syns."""
+    from prenly_dl.db import repository as repo
+
+    with db() as session:
+        site = repo.upsert_site(
+            session, "https://a.se", {"textalk-auth": "k", "auth": "t"}
+        )
+        publication, _ = repo.upsert_publication(session, site, 4019, "Hemslöjd")
+        for index, dag in enumerate(["2024-10-11", "2024-12-03"]):
+            repo.upsert_issue(
+                session, publication,
+                {"uid": str(index), "name": dag, "publication_date": dag},
+            )
+        publication.catalogue_complete = False
+        session.flush()
+
+        for issue in repo.list_issues(session, publication.id):
+            assert repo.issue_number_in_year(session, issue) is None

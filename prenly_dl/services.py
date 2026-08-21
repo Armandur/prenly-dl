@@ -578,6 +578,8 @@ def run_download_job(session: Session, job: Job) -> str:
     issue.status = IssueStatus.DONE.value
     issue.error = None
     issue.file_path = str(result.path)
+    if result.theme:
+        issue.theme = result.theme
     if not result.skipped:
         issue.page_count = result.page_count
         issue.downloaded_at = utcnow()
@@ -615,6 +617,7 @@ def _skjut_till_calibre(
             http, repo.credentials_for_site(site), publication.title_id,
             issue.cover_checksum, stor=True,
         )
+    nummer = repo.issue_number_in_year(session, issue)
     try:
         bok_id = calibre.push(
             config,
@@ -624,10 +627,12 @@ def _skjut_till_calibre(
                 publikation=publication.name,
                 utgava=issue.name,
                 datum=issue.publication_date or "",
+                tema=issue.theme,
+                nummer=nummer,
             ),
             authors=publication.name,
             series=publication.name,
-            series_index=calibre.series_index(issue.publication_date),
+            series_index=calibre.series_index(issue.publication_date, nummer),
             pubdate=issue.publication_date or "",
             cover=omslag,
             calibre_id=issue.calibre_id,

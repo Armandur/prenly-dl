@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
+from string import Formatter
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -154,23 +155,42 @@ def build_list_argv(config: CalibreConfig) -> list[str]:
 
 # Vad titelmönstret får innehålla. Fler fält kostar bara en rad här, men
 # varje nytt är ett som kan stå fel i någons sparade mönster.
-TITELFALT = ("publikation", "utgåva", "datum")
+TITELFALT = ("publikation", "utgåva", "datum", "tema", "nummer", "år")
 STANDARDTITEL = "{publikation} {utgåva}"
 
 
 def format_title(
-    monster: str, *, publikation: str, utgava: str, datum: str = ""
+    monster: str,
+    *,
+    publikation: str,
+    utgava: str,
+    datum: str = "",
+    tema: str = "",
+    nummer: int | None = None,
 ) -> str:
     """Bokens titel ur publikationens mönster.
 
     Ett mönster med okänt fält eller obalanserad klammer får inte fälla en
     nedladdning som lyckats - då används standarden i stället.
     """
-    varden = {"publikation": publikation, "utgåva": utgava, "datum": datum}
+    varden = {
+        "publikation": publikation,
+        "utgåva": utgava,
+        "datum": datum,
+        "tema": tema,
+        "nummer": nummer if nummer is not None else "",
+        "år": datum[:4] if len(datum) >= 4 else "",
+    }
     for kandidat in (monster.strip(), STANDARDTITEL):
         if not kandidat:
             continue
         try:
+            falt = [namn for _, namn, _, _ in Formatter().parse(kandidat) if namn]
+            # Alla fält mönstret använder måste ha värde. Annars ger
+            # "{år}-{nummer} - {tema}" strängen "2024- -" den gång temat
+            # saknas, vilket är sämre än standardtiteln.
+            if any(not str(varden.get(namn, "")).strip() for namn in falt):
+                continue
             titel = kandidat.format(**varden).strip()
         except (KeyError, IndexError, ValueError):
             logger.warning("Titelmönstret %r går inte att använda", kandidat)
@@ -180,14 +200,18 @@ def format_title(
     return f"{publikation} {utgava}".strip()
 
 
-def series_index(publication_date: str | None) -> str:
-    """Serienumret ur utgivningsdatumet, som 2011-03-15 -> 20110315.
+def series_index(publication_date: str | None, nummer: int | None = None) -> str:
+    """Serienumret som Calibre ska sortera serien på.
 
-    Calibre kräver ett tal här, och datumet som tal ger serien
-    kronologisk ordning utan att vi behöver räkna utgåvor.
+    Med årets löpnummer blir det 2024.2, alltså det utgåvan faktiskt
+    kallas. Utan nummer får datumet duga: 20240402 sorterar rätt men
+    läser sig som ett löpnummer på tio miljoner.
     """
     if not publication_date:
         return ""
+    ar = publication_date[:4]
+    if nummer is not None and ar.isdigit():
+        return f"{ar}.{nummer}"
     siffror = publication_date.replace("-", "")[:8]
     return siffror if siffror.isdigit() and len(siffror) == 8 else ""
 
