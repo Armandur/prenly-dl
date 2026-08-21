@@ -26,7 +26,7 @@
         {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}
       {% endif %}
       {% if publication.last_error %}<br><span class="muted">{{ publication.last_error }}</span>{% endif %}
-      {% if kortmeddelande %}<br><span class="kortbesked">{{ kortmeddelande }}</span>{% endif %}
+      {% if kortmeddelande %}<span class="kortbesked kortbesked-smal">{{ kortmeddelande }}</span>{% endif %}
       <br><span class="muted">
         Titel-ID {{ publication.title_id }} · bevakar {{ publication.watch_limit }} senaste ·
         {% if site %}<a href="/uppgifter">{{ site.url }}</a>{% else %}ingen läsbar sajt{% endif %}

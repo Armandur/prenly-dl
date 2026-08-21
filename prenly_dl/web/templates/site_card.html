@@ -4,7 +4,7 @@
   <td>
     <span class="badge {{ site.auth_status|status_class }}">{{ status_labels.get(site.auth_status, site.auth_status) }}</span>
     {% if site.auth_message %}<br><span class="muted">{{ site.auth_message }}</span>{% endif %}
-    {% if kortmeddelande %}<br><span class="kortbesked">{{ kortmeddelande }}</span>{% endif %}
+    {% if kortmeddelande %}<span class="kortbesked kortbesked-smal">{{ kortmeddelande }}</span>{% endif %}
   </td>
   <td class="muted">{{ site.auth_checked_at|local_time if site.auth_checked_at else "Aldrig" }}</td>
   <td>{{ post.antal }} titlar, {{ post.lasbara }} läsbara</td>
