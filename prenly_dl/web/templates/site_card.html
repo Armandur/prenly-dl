@@ -20,7 +20,7 @@
       </form>
       <form method="post" action="/sites/{{ site.id }}/delete"
             hx-post="/sites/{{ site.id }}/delete" hx-target="#sajt-{{ site.id }}" hx-swap="outerHTML"
-            data-confirm="Ta bort {{ site.url }}?">
+            hx-confirm="Ta bort {{ site.url }} och alla dess titlar?">
         <button class="secondary outline">Ta bort</button>
       </form>
     </div>

@@ -51,24 +51,41 @@
       let vantande = null;
 
       function avgor(ok) {
-        const form = vantande;
+        const uppgift = vantande;
         vantande = null;
         if (dialog.open) dialog.close();
-        if (ok && form) form.submit();
+        if (!ok || !uppgift) return;
+        // htmx skickar sin egen request och struntar i att formuläret
+        // aldrig submittades nativt, så de två fallen måste skiljas åt.
+        if (typeof uppgift === "function") uppgift(true);
+        else uppgift.submit();
       }
       document.getElementById("confirm-yes").addEventListener("click", () => avgor(true));
       document.getElementById("confirm-no").addEventListener("click", () => avgor(false));
       dialog.addEventListener("cancel", (e) => { e.preventDefault(); avgor(false); });
       dialog.addEventListener("click", (e) => { if (e.target === dialog) avgor(false); });
 
-      document.querySelectorAll("form[data-confirm]").forEach((form) => {
-        form.addEventListener("submit", (event) => {
-          if (vantande === form) return;
-          event.preventDefault();
-          text.textContent = form.dataset.confirm;
-          vantande = form;
-          dialog.showModal();
-        });
+      // Delegerat på body: htmx byter ut sajtrader och utgåvesektionen,
+      // och en lyssnare per formulär hade inte följt med. Utan den gick
+      // borttagningen igenom helt utan bekräftelse efter första swappen.
+      document.body.addEventListener("submit", (event) => {
+        const form = event.target.closest("form[data-confirm]");
+        // Ett htmx-formulär hanteras av htmx:confirm nedan; att stoppa
+        // submit här hindrar bara den native posten, inte htmx request.
+        if (!form || form.hasAttribute("hx-post") || vantande === form) return;
+        event.preventDefault();
+        text.textContent = form.dataset.confirm;
+        vantande = form;
+        dialog.showModal();
+      }, true);
+
+      // htmx frågar via det här eventet när hx-confirm finns.
+      document.body.addEventListener("htmx:confirm", (event) => {
+        if (!event.detail.question) return;
+        event.preventDefault();
+        text.textContent = event.detail.question;
+        vantande = event.detail.issueRequest;
+        dialog.showModal();
       });
     })();
   </script>
