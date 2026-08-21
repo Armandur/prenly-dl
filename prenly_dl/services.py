@@ -16,6 +16,7 @@ from .api import (
     get_titles,
 )
 from .config import output_root
+from . import calibre
 from .covers import fetch_and_cache_cover
 from .db import repository as repo
 from .db.models import (
@@ -587,9 +588,53 @@ def run_download_job(session: Session, job: Job) -> str:
     session.add(publication)
     repo.set_site_status(session, site, AuthStatus.OK, None)
 
-    if result.skipped:
-        return f"{result.path.name} fanns redan"
-    return f"{result.path.name} ({result.page_count} sidor)"
+    besked = (
+        f"{result.path.name} fanns redan"
+        if result.skipped
+        else f"{result.path.name} ({result.page_count} sidor)"
+    )
+    calibre_besked = _skjut_till_calibre(session, publication, issue, http, site)
+    return f"{besked}{calibre_besked}"
+
+
+def _skjut_till_calibre(
+    session: Session, publication: Publication, issue: Issue, http, site
+) -> str:
+    """Lägg utgåvan i Calibre om integrationen är påslagen.
+
+    Returnerar ett tillägg till jobbets besked. Ett fel mot Calibre märks
+    på jobbet men fäller inte nedladdningen: PDF:en ligger redan på disk.
+    """
+    config = calibre.load_config(session)
+    if not config.configured:
+        return ""
+
+    omslag = None
+    if issue.cover_checksum:
+        omslag = fetch_and_cache_cover(
+            http, repo.credentials_for_site(site), publication.title_id,
+            issue.cover_checksum, stor=True,
+        )
+    try:
+        bok_id = calibre.push(
+            config,
+            Path(issue.file_path),
+            title=f"{publication.name} {issue.name}",
+            authors=publication.name,
+            series=publication.name,
+            series_index=calibre.series_index(issue.publication_date),
+            pubdate=issue.publication_date or "",
+            cover=omslag,
+            calibre_id=issue.calibre_id,
+        )
+    except calibre.CalibreError as error:
+        logger.warning("Kunde inte lägga %s i Calibre: %s", issue.name, error)
+        return f", men Calibre svarade: {error}"
+
+    if bok_id != issue.calibre_id:
+        issue.calibre_id = bok_id
+        session.add(issue)
+    return f", i Calibre som {bok_id}"
 
 
 def execute_job(session: Session, job: Job) -> None:

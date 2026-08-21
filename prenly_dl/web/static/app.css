@@ -38,6 +38,9 @@
 .card-actions [role="button"] {
   margin: 0; padding: 0.35rem 0.8rem; font-size: 0.85rem;
   line-height: 1.5; white-space: nowrap; text-align: center;
+  /* Pico breddar formulärknappar till hela raden. I en knapprad ska de
+     ligga bredvid varandra, och mobilregeln nedan sträcker dem ändå. */
+  width: auto;
 }
 
 /* Korten är lika höga i sin rad, så knapparna ska ligga i botten oavsett

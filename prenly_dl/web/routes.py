@@ -40,6 +40,7 @@ from ..services import (
     verify_site,
 )
 from .auth import check_password, is_authenticated
+from .. import calibre
 from .library import folder_usage, resolve_file
 from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
@@ -1055,6 +1056,7 @@ async def open_preview(issue_id: int):
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     with get_session() as session:
+        calibre_config = calibre.load_config(session)
         poll_cron = repo.get_setting(session, POLL_CRON_KEY, DEFAULT_POLL_CRON)
         history_days = repo.get_setting(
             session, JOB_HISTORY_DAYS_KEY, str(DEFAULT_JOB_HISTORY_DAYS)
@@ -1064,6 +1066,7 @@ def settings_page(request: Request):
         request,
         "settings.html",
         poll_cron=poll_cron,
+        calibre=calibre_config,
         history_days=history_days,
         output_dir=output_root(),
         timezone=timezone_name(),
@@ -1087,6 +1090,68 @@ def save_settings(
         repo.set_setting(session, POLL_CRON_KEY, poll_cron.strip())
         repo.set_setting(session, JOB_HISTORY_DAYS_KEY, str(max(1, history_days)))
     flash(request, "Inställningarna sparade", "success")
+    return back("/settings")
+
+
+@router.post("/settings/calibre")
+def save_calibre_settings(
+    request: Request,
+    enabled: str = Form(""),
+    url: str = Form(""),
+    library: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    """Spara Calibre-uppgifterna.
+
+    Ett tomt lösenordsfält betyder oförändrat, inte tomt: fältet fylls
+    aldrig i från databasen och skulle annars nollas vid varje sparning.
+    """
+    with get_session() as session:
+        repo.set_setting(session, calibre.ENABLED_KEY, "on" if enabled else "")
+        repo.set_setting(session, calibre.URL_KEY, url.strip())
+        repo.set_setting(session, calibre.LIBRARY_KEY, library.strip())
+        repo.set_setting(session, calibre.USERNAME_KEY, username.strip())
+        if password:
+            repo.set_setting(session, calibre.PASSWORD_KEY, password)
+    flash(request, "Calibre-inställningarna sparade", "success")
+    return back("/settings")
+
+
+@router.post("/settings/calibre/test")
+def test_calibre(
+    request: Request,
+    enabled: str = Form(""),
+    url: str = Form(""),
+    library: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    """Kör ett ofarligt calibredb-anrop och rapportera vad som händer.
+
+    Uppgifterna tas ur formuläret och inte ur databasen, så man kan prova
+    dem innan man sparar. Tomt lösenordsfält betyder det sparade, precis
+    som vid sparning.
+    """
+    with get_session() as session:
+        sparat = calibre.load_config(session)
+    config = calibre.CalibreConfig(
+        enabled=bool(enabled),
+        url=url.strip(),
+        library=library.strip(),
+        username=username.strip(),
+        password=password or sparat.password,
+    )
+    if not config.configured:
+        besked = "Fyll i adress och bibliotek och slå på integrationen först"
+    else:
+        try:
+            calibre.run(config, calibre.build_list_argv(config))
+        except calibre.CalibreError as error:
+            besked = f"Calibre svarade: {error}"
+        else:
+            besked = f"Kontakt med {config.with_library}"
+    flash(request, besked, "info")
     return back("/settings")
 
 

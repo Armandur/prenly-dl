@@ -85,6 +85,7 @@
         {% else %}
           <span class="badge {{ issue.status|status_class }}">{{ issue.status }}</span>
         {% endif %}
+        {% if issue.calibre_id %}<br><span class="muted">Calibre {{ issue.calibre_id }}</span>{% endif %}
         {% if issue.error %}<br><span class="muted">{{ issue.error }}</span>{% endif %}
       </td>
       <td>{{ issue.page_count or "-" }}</td>

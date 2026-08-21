@@ -201,6 +201,46 @@
 </article>
 
 <article>
+  <h2>Calibre</h2>
+  <p class="muted">
+    Hämtade utgåvor skjuts in i Calibre via <code>calibredb</code> mot en
+    körande content server. Servern äger biblioteket, så calibre-web-automated
+    kan läsa samma bibliotek utan att vi slåss om låset.
+  </p>
+  <form method="post" action="/settings/calibre">
+    <label>
+      <input type="checkbox" name="enabled" {% if calibre.enabled %}checked{% endif %}>
+      Lägg in nedladdade utgåvor i Calibre
+    </label>
+    <div class="grid">
+      <label>Content server
+        <input name="url" value="{{ calibre.url }}" placeholder="http://tervo2:8081">
+      </label>
+      <label>Bibliotekets id
+        <input name="library" value="{{ calibre.library }}" placeholder="Calibre_Library">
+        <small>Den del som står efter <code>#</code> i serverns adress.</small>
+      </label>
+    </div>
+    <div class="grid">
+      <label>Användarnamn
+        <input name="username" value="{{ calibre.username }}" autocomplete="off">
+        <small>Lämna tomt om servern saknar inloggning.</small>
+      </label>
+      <label>Lösenord
+        <input type="password" name="password" autocomplete="new-password"
+               placeholder="{{ "oförändrat" if calibre.password else "" }}">
+        <small>Tomt fält lämnar lösenordet oförändrat.</small>
+      </label>
+    </div>
+    <div class="card-actions">
+      <button type="submit">Spara</button>
+      <button type="submit" class="secondary outline"
+              formaction="/settings/calibre/test">Testa anslutningen</button>
+    </div>
+  </form>
+</article>
+
+<article>
   <h2>Importera gamla konfigurationsfiler</h2>
   <p class="muted">Läser in alla <code>*.json</code> i katalogen och skapar publikationer av dem.</p>
   <form method="post" action="/settings/import">
