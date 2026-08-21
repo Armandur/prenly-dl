@@ -1137,12 +1137,17 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
         if issue is None or not issue.file_path:
             return back("/calibre")
         config = calibre.load_config(session)
+        # Sökvägen går vidare till calibredb, så den kontrolleras mot
+        # utdatakatalogen som allt annat filhanterande i ui:t.
+        relativ = _bibliotekssokvag(issue.file_path)
+        fil = resolve_file(relativ) if relativ else None
         if book_id not in calibre_match.tillatna_bocker(session, config):
             besked = f"Bok {book_id} finns inte bland förslagen"
+        elif fil is None:
+            besked = f"Filen för {issue.name} finns inte i utdatakatalogen"
         else:
             try:
-                calibre.push(config, Path(issue.file_path), title="", authors="",
-                             calibre_id=book_id)
+                calibre.replace_format(config, fil, book_id)
             except calibre.CalibreError as error:
                 besked = f"Calibre svarade: {error}"
             else:

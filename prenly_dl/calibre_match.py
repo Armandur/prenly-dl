@@ -172,6 +172,10 @@ def find_candidates(
                 )
             )
             if len(forslag) >= limit:
+                logger.warning(
+                    "Visar de första %d förslagen, fler finns kvar att gå igenom",
+                    limit,
+                )
                 return forslag
     return forslag
 

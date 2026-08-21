@@ -260,6 +260,16 @@ def run(config: CalibreConfig, argv: list[str]) -> str:
     return klar.stdout or ""
 
 
+def replace_format(config: CalibreConfig, path: Path, calibre_id: int) -> int:
+    """Byt ut filen på en bok som redan finns.
+
+    Ingen metadata skickas: boken finns och dess uppgifter ska stå kvar.
+    Att ta titel och författare här hade bara varit argument som ignoreras.
+    """
+    run(config, build_add_format_argv(config, calibre_id, path))
+    return calibre_id
+
+
 def push(
     config: CalibreConfig,
     path: Path,
@@ -278,8 +288,7 @@ def push(
     uppdatera boken, inte skapa en till.
     """
     if calibre_id is not None:
-        run(config, build_add_format_argv(config, calibre_id, path))
-        return calibre_id
+        return replace_format(config, path, calibre_id)
 
     utdata = run(config, build_add_argv(
         config, path, title=title, authors=authors,

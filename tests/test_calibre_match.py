@@ -214,9 +214,10 @@ def test_koppling_vagrar_en_bok_som_inte_ar_kandidat(db, temp_env, bibliotek, mo
 
 
 def test_ersatt_skickar_filen_men_koppling_gor_det_inte(
-    db, temp_env, bibliotek, monkeypatch, tmp_path
+    db, temp_env, bibliotek, monkeypatch
 ):
-    pdf = tmp_path / "utgava.pdf"
+    pdf = temp_env / "output" / "Tidningen Hemslöjd" / "utgava.pdf"
+    pdf.parent.mkdir(parents=True, exist_ok=True)
     pdf.write_bytes(b"pdf")
     issue_id = _uppsatt(db, monkeypatch, med_fil=pdf)
     korda = []
@@ -243,3 +244,27 @@ def test_proxyn_ger_404_for_bok_utanfor_forslagen(db, temp_env, bibliotek, monke
         assert client.get("/calibre/cover/1686").status_code == 404
         assert client.get("/calibre/file/1900").status_code == 404
         assert client.get("/calibre/cover/1541").status_code == 200
+
+
+def test_ersatt_vagrar_en_fil_utanfor_utdatakatalogen(
+    db, temp_env, bibliotek, monkeypatch, tmp_path
+):
+    """Sökvägen går vidare till calibredb och kontrolleras som all annan."""
+    utanfor = tmp_path / "nagon-annanstans.pdf"
+    utanfor.write_bytes(b"pdf")
+    issue_id = _uppsatt(db, monkeypatch, med_fil=utanfor)
+
+    def _far_inte_koras(*args, **kwargs):
+        raise AssertionError("calibredb fick en sökväg utanför utdatakatalogen")
+
+    monkeypatch.setattr(calibre, "run", _far_inte_koras)
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/issues/{issue_id}/calibre/push", data={"book_id": 1541},
+            headers={"HX-Request": "true"},
+        )
+
+    assert "finns inte i utdatakatalogen" in svar.text
+    with db() as session:
+        assert repo.get_issue(session, issue_id).calibre_id is None
