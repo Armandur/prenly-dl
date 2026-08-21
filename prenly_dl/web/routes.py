@@ -851,13 +851,15 @@ def download_issue_now(
         slug = publication.slug if publication else ""
         job = repo.enqueue_download(session, issue, force=force == "on")
         namn = issue.name
+        disk_only = issue.disk_only
         kontext = _utgavekontext(session, publication, page) if publication else None
 
-    besked = (
-        "Utgåvan har redan ett aktivt jobb"
-        if job is None
-        else f"Köade nedladdning av {namn}"
-    )
+    if job is not None:
+        besked = f"Köade nedladdning av {namn}"
+    elif disk_only:
+        besked = f"{namn} finns bara på disk och går inte att hämta"
+    else:
+        besked = "Utgåvan har redan ett aktivt jobb"
     if request.headers.get("HX-Request") and kontext is not None:
         kontext.pop("_fel", None)
         return render(
@@ -902,14 +904,16 @@ def _radera_diskfil(session, issue) -> str:
     """Ta bort PDF:en och utgåveraden. Filen går inte att hämta igen."""
     namn = issue.name
     path = _bibliotekssokvag(issue.file_path)
-    borttagen = False
-    if path is not None:
-        mal = resolve_file(path)
-        if mal is not None:
+    mal = resolve_file(path) if path is not None else None
+    if mal is not None:
+        try:
             mal.unlink()
-            borttagen = True
+        except OSError as error:
+            # Raden är den enda pekaren till filen, så den får stå kvar.
+            logger.warning("Kunde inte radera %s: %s", mal, error)
+            return f"Kunde inte ta bort filen för {namn}: {error}"
     session.delete(issue)
-    if borttagen:
+    if mal is not None:
         return f"Tog bort {namn} och dess fil"
     return f"Tog bort raden {namn}, men filen fanns inte på disk"
 
@@ -922,7 +926,7 @@ async def batch_download(request: Request, publication_id: int):
     force = form.get("force") == "on"
     page = int(form.get("page") or 1)
 
-    koade, redan_hamtade, aktiva = 0, 0, 0
+    koade, redan_hamtade, aktiva, bara_disk = 0, 0, 0, 0
     with get_session() as session:
         publication = repo.get_publication(session, publication_id)
         if publication is None:
@@ -933,6 +937,11 @@ async def batch_download(request: Request, publication_id: int):
             # Bara utgåvor som hör till den här publikationen, så en
             # tillrättalagd post inte kan köa jobb någon annanstans.
             if issue is None or issue.title_id != publication.title_id:
+                continue
+            if issue.disk_only:
+                # Sidan visar ingen kryssruta för dem, men den kan ha
+                # renderats innan importen skapade raden.
+                bara_disk += 1
                 continue
             if not force and issue.status == IssueStatus.DONE.value:
                 # Nedladdningen skulle ändå svara "fanns redan".
@@ -952,6 +961,8 @@ async def batch_download(request: Request, publication_id: int):
             delar.append(f"{redan_hamtade} redan hämtade")
         if aktiva:
             delar.append(f"{aktiva} hade redan ett aktivt jobb")
+        if bara_disk:
+            delar.append(f"{bara_disk} finns bara på disk och går inte att hämta")
         besked = ", ".join(delar)
 
     if request.headers.get("HX-Request"):
@@ -969,6 +980,8 @@ def _forhandsgranskningsdata(issue_id: int):
         issue = repo.get_issue(session, issue_id)
         if issue is None:
             return None, "Utgåvan finns inte"
+        if issue.disk_only:
+            return None, "Utgåvan finns bara på disk och går inte att bygga om"
         publication = repo.get_publication_for_title(session, issue.title_id)
         if publication is None:
             return None, "Publikationen finns inte"

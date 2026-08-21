@@ -432,6 +432,11 @@ def has_active_job(session: Session, issue_id: int) -> bool:
 
 
 def enqueue_download(session: Session, issue: Issue, force: bool = False) -> Job | None:
+    # En diskutgåva har inget uid hos Prenly. Knapparna är borta i
+    # tabellen, men en sida som renderats innan importen kan fortfarande
+    # posta id:t, och jobbet skulle då skriva över filen med ett fel.
+    if issue.disk_only:
+        return None
     if has_active_job(session, issue.id):
         return None
     publication = get_publication_for_title(session, issue.title_id)

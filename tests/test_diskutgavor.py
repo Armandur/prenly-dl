@@ -200,3 +200,78 @@ def test_tabellen_visar_diskposten_utan_hamtknappar(db, temp_env, monkeypatch):
     # postar till /issues/<id>/download.
     assert f"/issues/{issue_id}/download" not in svar.text
     assert f"data-preview=\"/issues/{issue_id}/preview\"" not in svar.text
+
+
+def _diskutgava(session, publication):
+    """Skapa en diskpost och returnera dess id."""
+    _skriv(publication, "Hemslojd 2011-03-15.pdf")
+    import_existing_files(session)
+    session.commit()
+    return repo.list_issues(session, publication.id)[0].id
+
+
+def test_batchen_koar_inte_en_diskutgava(db, temp_env, monkeypatch):
+    """Sidan visar ingen kryssruta, men en gammal sida kan posta id:t ändå."""
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        issue_id = _diskutgava(session, publication)
+        publication_id = publication.id
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/publications/{publication_id}/issues/batch",
+            data={"valda": [issue_id], "force": "on", "page": 1},
+            headers={"HX-Request": "true"},
+        )
+
+    assert svar.status_code == 200
+    assert "bara på disk och går inte att hämta" in svar.text
+    with db() as session:
+        assert repo.list_jobs(session) == []
+
+
+def test_enskild_nedladdning_vagrar_en_diskutgava(db, temp_env, monkeypatch):
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        issue_id = _diskutgava(session, publication)
+
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/issues/{issue_id}/download",
+            data={"force": "on", "page": 1},
+            headers={"HX-Request": "true"},
+        )
+
+    assert "går inte att hämta" in svar.text
+    with db() as session:
+        assert repo.list_jobs(session) == []
+
+
+def test_raderingen_behaller_raden_nar_filen_inte_gar_att_ta_bort(
+    db, temp_env, monkeypatch
+):
+    """Raden är den enda pekaren till filen och får inte försvinna med felet."""
+    with db() as session:
+        publication = _publikation(session, 1, "Hemslojd", prefix="Hemslojd ")
+        publication.enabled = True
+        issue_id = _diskutgava(session, publication)
+
+    import pathlib
+
+    def _spricker(self, **kwargs):
+        raise OSError("skrivskyddad katalog")
+
+    monkeypatch.setattr(pathlib.Path, "unlink", _spricker)
+    with _klient(temp_env, monkeypatch) as client:
+        svar = client.post(
+            f"/issues/{issue_id}/delete-file",
+            data={"page": 1},
+            headers={"HX-Request": "true"},
+        )
+
+    assert svar.status_code == 200
+    assert "Kunde inte ta bort filen" in svar.text
+    with db() as session:
+        assert repo.get_issue(session, issue_id) is not None
