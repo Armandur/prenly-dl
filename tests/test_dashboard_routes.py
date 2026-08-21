@@ -346,3 +346,49 @@ def test_uppgifter_listar_sajt_med_antal_titlar(client):
     assert "2 titlar, 1 läsbara" in svar.text
     assert "Testa uppgifter" in svar.text
     assert "Hämta titlar och omslag" in svar.text
+
+
+def test_jobbsidan_visar_vad_jobbet_gjorde(client, temp_env):
+    """Sammanfattningen säger hur många, detaljerna säger vilka."""
+    from prenly_dl.db.models import Job, JobStatus, JobType, utcnow
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        job = Job(
+            type=JobType.ENRICH.value,
+            status=JobStatus.DONE.value,
+            progress_done=2,
+            progress_total=2,
+            message="2 böcker fick uppgifter",
+            detail="2024-04-02: bok 1541 <- series = Hemslöjd\n2023-03-27: bok 1384 <- pubdate = 2023-03-27",
+            started_at=utcnow(),
+            finished_at=utcnow(),
+        )
+        session.add(job)
+        session.flush()
+        job_id = job.id
+
+    text = client.get(f"/jobs/{job_id}").text
+
+    # Jobbtypen på svenska, inte kodnamnet ensamt.
+    assert "Fyller på uppgifter i Calibre" in text
+    # Förloppet räknar böcker här, inte sidor.
+    assert "2/2 böcker" in text
+    assert "sidor" not in text
+    assert "Vad jobbet gjorde" in text
+    assert "bok 1541" in text and "bok 1384" in text
+
+
+def test_jobbsidan_utan_detaljer_visar_ingen_tom_ruta(client, temp_env):
+    from prenly_dl.db.models import Job, JobStatus, JobType
+    from prenly_dl.db.session import get_session
+
+    with get_session() as session:
+        job = Job(type=JobType.POLL.value, status=JobStatus.DONE.value)
+        session.add(job)
+        session.flush()
+        job_id = job.id
+
+    text = client.get(f"/jobs/{job_id}").text
+    assert "Vad jobbet gjorde" not in text
+    assert "Katalogkontroll" in text

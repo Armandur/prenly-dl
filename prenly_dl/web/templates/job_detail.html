@@ -6,7 +6,7 @@
   <h1>Jobb {{ job.id }}</h1>
   <p>
     <span class="badge {{ job.status|status_class }}">{{ job.status }}</span>
-    {{ job.type }}
+    {{ job.type|jobbnamn }} <span class="muted">({{ job.type }})</span>
   </p>
 </hgroup>
 
@@ -18,14 +18,31 @@
       <tr><th>Avslutat</th><td>{{ job.finished_at|local_time("%Y-%m-%d %H:%M:%S") }}</td></tr>
       <tr><th>Publikation</th>
         <td>{% if publication %}<a href="/publications/{{ publication.slug }}">{{ publication.name }}</a>{% else %}alla{% endif %}</td></tr>
-      <tr><th>Utgåva</th><td>{{ issue.name if issue else "-" }}</td></tr>
+      <tr><th>Utgåva</th>
+        <td>
+          {% if issue %}
+            {{ issue.name }}
+            {% if issue.rel_path %}
+              · <a href="/library/file/{{ issue.rel_path|urlencode }}" target="_blank" rel="noopener">öppna filen</a>
+            {% endif %}
+          {% else %}-{% endif %}
+        </td></tr>
       <tr><th>Tvingad</th><td>{{ "ja" if job.force else "nej" }}</td></tr>
       <tr><th>Förlopp</th>
-        <td>{% if job.progress_total %}{{ job.progress_done }}/{{ job.progress_total }} sidor{% else %}-{% endif %}</td></tr>
+        <td>{% if job.progress_total %}{{ job.progress_done }}/{{ job.progress_total }} {{ job.type|jobbenhet }}{% else %}-{% endif %}</td></tr>
+      <tr><th>Tid</th><td>{{ varaktighet or "-" }}</td></tr>
       <tr><th>Resultat</th><td>{{ job.message or "-" }}</td></tr>
     </tbody>
   </table>
 </article>
+
+{% if job.detail %}
+<article>
+  <h2>Vad jobbet gjorde</h2>
+  <p class="muted">{{ job.detail.splitlines()|length }} rader.</p>
+  <pre class="job-detail">{{ job.detail }}</pre>
+</article>
+{% endif %}
 
 {% if job.error %}
 <article class="flash flash-error">

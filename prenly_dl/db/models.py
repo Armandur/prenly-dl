@@ -64,6 +64,27 @@ class JobType(str, Enum):
     RETITLE = "retitle"
 
 
+# Vad varje jobbtyp heter för en människa, och vad förloppet räknar.
+# Utan det stod det "65/65 sidor" på ett jobb som gick igenom böcker.
+JOBBTYPER: dict[str, tuple[str, str]] = {
+    JobType.POLL.value: ("Katalogkontroll", "publikationer"),
+    JobType.DOWNLOAD.value: ("Nedladdning", "sidor"),
+    JobType.CATALOGUE.value: ("Hämtar hela katalogen", "utgåvor"),
+    JobType.SITE_SYNC.value: ("Titlar och omslag", "titlar"),
+    JobType.HEADLINES.value: ("Hämtar rubriker", "utgåvor"),
+    JobType.ENRICH.value: ("Fyller på uppgifter i Calibre", "böcker"),
+    JobType.RETITLE.value: ("Skriver om titlar i Calibre", "böcker"),
+}
+
+
+def jobbnamn(typ: str) -> str:
+    return JOBBTYPER.get(typ, (typ, ""))[0]
+
+
+def jobbenhet(typ: str) -> str:
+    return JOBBTYPER.get(typ, (typ, ""))[1]
+
+
 class Site(Base):
     """En tidningssajt och dess inloggningsuppgifter."""
 
@@ -269,6 +290,9 @@ class Job(Base):
     progress_done: Mapped[int] = mapped_column(Integer, default=0)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Rad för rad vad jobbet faktiskt gjorde. Sammanfattningen i message
+    # säger hur många, den här säger vilka.
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

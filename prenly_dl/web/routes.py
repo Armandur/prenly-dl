@@ -52,7 +52,7 @@ from ..services import (
 )
 from .auth import check_password, is_authenticated
 from .. import calibre, calibre_api, calibre_match
-from .library import folder_usage, resolve_file
+from .library import folder_usage, library_rel_path, resolve_file
 from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
 
@@ -557,19 +557,6 @@ async def save_pasted(request: Request):
     return back("/catalogue")
 
 
-def _bibliotekssokvag(file_path: str | None) -> str | None:
-    """Sökvägen som /library/file vill ha, eller None om filen är borta."""
-    if not file_path:
-        return None
-    path = Path(file_path)
-    if not path.is_file():
-        return None
-    try:
-        return str(path.resolve().relative_to(output_root().resolve()))
-    except ValueError:
-        # Filen ligger utanför utdatakatalogen och kan inte serveras.
-        return None
-
 
 def _utgavekontext(session, publication, page: int) -> dict:
     """Allt utgåvetabellen behöver för en given sida."""
@@ -593,7 +580,7 @@ def _utgavekontext(session, publication, page: int) -> dict:
     for issue in issues:
         # Biblioteksrutten vill ha en sökväg relativ utdatakatalogen, och
         # länken ska bara finnas när filen faktiskt är kvar på disk.
-        issue.rel_path = _bibliotekssokvag(issue.file_path)
+        issue.rel_path = library_rel_path(issue.file_path)
     calibre_status = calibre_match.status_per_utgava(
         session, calibre.load_config(session), issues
     )
@@ -943,7 +930,7 @@ def delete_disk_issue(request: Request, issue_id: int, page: int = Form(1)):
 def _radera_diskfil(session, issue) -> str:
     """Ta bort PDF:en och utgåveraden. Filen går inte att hämta igen."""
     namn = issue.name
-    path = _bibliotekssokvag(issue.file_path)
+    path = library_rel_path(issue.file_path)
     mal = resolve_file(path) if path is not None else None
     if mal is not None:
         try:
@@ -1219,7 +1206,7 @@ def push_issue_to_calibre(request: Request, issue_id: int, book_id: int = Form(.
         config = calibre.load_config(session)
         # Sökvägen går vidare till calibredb, så den kontrolleras mot
         # utdatakatalogen som allt annat filhanterande i ui:t.
-        relativ = _bibliotekssokvag(issue.file_path)
+        relativ = library_rel_path(issue.file_path)
         fil = resolve_file(relativ) if relativ else None
         if book_id not in calibre_match.tillatna_bocker(session, config):
             besked = f"Bok {book_id} finns inte bland förslagen"

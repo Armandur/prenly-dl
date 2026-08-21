@@ -220,6 +220,20 @@ def _diskpost(session, publication, filename: str, path: Path) -> Issue:
     session.flush()
     return issue
 
+def library_rel_path(file_path: str | None) -> str | None:
+    """Sökvägen som /library/file vill ha, eller None om filen är borta."""
+    if not file_path:
+        return None
+    path = Path(file_path)
+    if not path.is_file():
+        return None
+    try:
+        return str(path.resolve().relative_to(output_root().resolve()))
+    except ValueError:
+        # Filen ligger utanför utdatakatalogen och kan inte serveras.
+        return None
+
+
 def resolve_file(rel_path: str, root: Path | None = None) -> Path | None:
     """Slå upp en fil i biblioteket, med skydd mot vägar ut ur katalogen."""
     base = (Path(root) if root else output_root()).resolve()

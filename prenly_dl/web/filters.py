@@ -30,6 +30,20 @@ def local_time(value: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     return aware.astimezone(ZoneInfo(timezone_name())).strftime(fmt)
 
 
+def jobbnamn(typ: str) -> str:
+    """Jobbtypen på svenska, för den som inte känner till kodnamnen."""
+    from ..db.models import jobbnamn as namn
+
+    return namn(typ)
+
+
+def jobbenhet(typ: str) -> str:
+    """Vad förloppet räknar: sidor, böcker eller utgåvor."""
+    from ..db.models import jobbenhet as enhet
+
+    return enhet(typ)
+
+
 def status_class(value: str | None) -> str:
     return STATUS_CLASSES.get(value or "", "neutral")
 
@@ -50,3 +64,5 @@ def register_filters(env) -> None:
     env.filters["human_size"] = human_size
     env.filters["local_time"] = local_time
     env.filters["status_class"] = status_class
+    env.filters["jobbnamn"] = jobbnamn
+    env.filters["jobbenhet"] = jobbenhet

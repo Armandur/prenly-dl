@@ -11,7 +11,13 @@ from ..config import output_root
 from ..db import repository as repo
 from ..db.models import JobStatus
 from ..db.session import get_session
-from .library import group_by_folder, import_existing_files, resolve_file, scan_library
+from .library import (
+    group_by_folder,
+    import_existing_files,
+    library_rel_path,
+    resolve_file,
+    scan_library,
+)
 from .rendering import back, flash, render
 
 logger = logging.getLogger(__name__)
@@ -87,7 +93,23 @@ def job_detail(request: Request, job_id: int):
             repo.get_publication(session, job.publication_id) if job.publication_id else None
         )
         issue = repo.get_issue(session, job.issue_id) if job.issue_id else None
-    return render(request, "job_detail.html", job=job, publication=publication, issue=issue)
+        if issue is not None:
+            issue.rel_path = library_rel_path(issue.file_path)
+    return render(
+        request, "job_detail.html", job=job, publication=publication, issue=issue,
+        varaktighet=_varaktighet(job),
+    )
+
+
+def _varaktighet(job) -> str:
+    """Hur länge jobbet tog, i läsbar form."""
+    if job.started_at is None or job.finished_at is None:
+        return ""
+    sekunder = int((job.finished_at - job.started_at).total_seconds())
+    if sekunder < 60:
+        return f"{sekunder} s"
+    minuter, rest = divmod(sekunder, 60)
+    return f"{minuter} min {rest} s"
 
 
 @router.post("/jobs/poll-all")

@@ -501,6 +501,16 @@ def run_catalogue_job(session: Session, job: Job) -> str:
     return f"{totalt} utgåvor i katalogen, {nya} nya (hade {innan})"
 
 
+def _spara_detalj(session: Session, job: Job, rader: list[str]) -> None:
+    """Spara rad för rad vad jobbet gjorde.
+
+    Sammanfattningen säger hur många, den här säger vilka - annars går
+    det inte att se efteråt vad som faktiskt ändrades.
+    """
+    job.detail = "\n".join(rader) if rader else None
+    session.add(job)
+
+
 def run_headlines_job(session: Session, job: Job) -> str:
     """Hämta utgåvornas rubrik, alltså förstasidesartikelns rubrik.
 
@@ -524,19 +534,23 @@ def run_headlines_job(session: Session, job: Job) -> str:
     creds = repo.credentials_for_site(site)
 
     hittade, tomma, fel = 0, 0, 0
+    rader: list[str] = []
     for gjort, issue in enumerate(utgavor, start=1):
         try:
             rubrik = front_page_headline(get_issue(http, creds, publication.title_id, issue.uid))
         except PrenlyError as error:
             # En trasig utgåva ska inte fälla genomgången av de andra.
             logger.warning("Kunde inte läsa %s: %s", issue.name, error)
+            rader.append(f"{issue.name}: kunde inte läsas - {error}")
             fel += 1
             continue
         if rubrik:
             issue.headline = rubrik
             session.add(issue)
+            rader.append(f"{issue.name}: {rubrik}")
             hittade += 1
         else:
+            rader.append(f"{issue.name}: inga artiklar i Prenly")
             tomma += 1
         # Förloppet skrivs i en egen session, så den egna måste vara
         # tömd först: annars håller den skrivlåset och den andra får
@@ -545,6 +559,7 @@ def run_headlines_job(session: Session, job: Job) -> str:
             session.commit()
             repo.update_job_progress(job.id, gjort, len(utgavor))
 
+    _spara_detalj(session, job, rader)
     delar = [f"{hittade} rubriker hämtade"]
     if tomma:
         delar.append(f"{tomma} utgåvor saknar artiklar i Prenly")
@@ -567,7 +582,9 @@ def run_enrich_job(session: Session, job: Job) -> str:
         return "Inga böcker saknar uppgifter vi har"
 
     skrivna, fel = 0, 0
+    rader: list[str] = []
     for gjort, post in enumerate(poster, start=1):
+        falt = ", ".join(f"{n} = {v}" for n, v in post.falt.items())
         try:
             calibre.run(
                 config, calibre.build_metadata_argv(config, post.book_id, post.falt)
@@ -575,8 +592,10 @@ def run_enrich_job(session: Session, job: Job) -> str:
         except calibre.CalibreError as error:
             # En bok som inte går att skriva ska inte fälla resten.
             logger.warning("Kunde inte berika bok %s: %s", post.book_id, error)
+            rader.append(f"{post.utgava}: bok {post.book_id} misslyckades - {error}")
             fel += 1
             continue
+        rader.append(f"{post.utgava}: bok {post.book_id} {post.boktitel} <- {falt}")
         skrivna += 1
         if gjort % 10 == 0 or gjort == len(poster):
             # Förloppet skrivs i en egen session, så den egna måste vara
@@ -587,6 +606,7 @@ def run_enrich_job(session: Session, job: Job) -> str:
     # Biblioteket har ändrats, så nästa läsning ska gå till servern.
     calibre_api.glom_cache()
     calibre_match.glom_forslag()
+    _spara_detalj(session, job, rader)
     besked = f"{skrivna} böcker fick uppgifter"
     if fel:
         besked += f", {fel} gick inte att skriva"
@@ -608,6 +628,7 @@ def run_retitle_job(session: Session, job: Job) -> str:
         return "Inga titlar skiljer sig från mönstret"
 
     skrivna, fel = 0, 0
+    rader: list[str] = []
     for gjort, post in enumerate(poster, start=1):
         try:
             calibre.run(
@@ -616,8 +637,10 @@ def run_retitle_job(session: Session, job: Job) -> str:
             )
         except calibre.CalibreError as error:
             logger.warning("Kunde inte byta titel på bok %s: %s", post.book_id, error)
+            rader.append(f"bok {post.book_id} misslyckades - {error}")
             fel += 1
             continue
+        rader.append(f"bok {post.book_id}: {post.nuvarande} -> {post.ny}")
         skrivna += 1
         if gjort % 10 == 0 or gjort == len(poster):
             session.commit()
@@ -625,6 +648,7 @@ def run_retitle_job(session: Session, job: Job) -> str:
 
     calibre_api.glom_cache()
     calibre_match.glom_forslag()
+    _spara_detalj(session, job, rader)
     besked = f"{skrivna} titlar rättade"
     if fel:
         besked += f", {fel} gick inte att skriva"
@@ -728,6 +752,15 @@ def run_download_job(session: Session, job: Job) -> str:
         else f"{result.path.name} ({result.page_count} sidor)"
     )
     calibre_besked = _skjut_till_calibre(session, publication, issue, http, site)
+    _spara_detalj(session, job, [
+        f"Utgåva: {issue.name} ({issue.publication_date or 'utan datum'})",
+        f"Publikation: {publication.name}",
+        f"Fil: {result.path}",
+        f"Sidor: {result.page_count}" if not result.skipped else "Filen fanns redan",
+        f"Hämtad via: {site.url}",
+        *([f"Provade först: {', '.join(provade)}"] if provade else []),
+        *([f"Calibre: bok {issue.calibre_id}"] if issue.calibre_id else []),
+    ])
     return f"{besked}{calibre_besked}"
 
 

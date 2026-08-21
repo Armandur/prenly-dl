@@ -375,3 +375,10 @@ button.htmx-request::after {
 /* Omskrivning av titlar ersätter något som redan står i Calibre, till
    skillnad från påfyllningen. Det ska synas innan man trycker. */
 .berikning-varning { border-left-color: #c9403f; }
+
+/* Jobbets rader: en per objekt, ofta många. Egen scroll så sidan inte
+   blir orimligt lång av ett jobb som gick igenom sextiofem böcker. */
+.job-detail {
+  max-height: 24rem; overflow: auto; white-space: pre-wrap;
+  font-size: 0.8rem; line-height: 1.6;
+}
