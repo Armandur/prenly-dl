@@ -74,11 +74,15 @@
 
       </div>
 
-      {% if post.lokal_storlek and kandidat.storlek
-            and (post.lokal_storlek - kandidat.storlek)|abs > kandidat.storlek // 100 %}
+      {% if kandidat.samma_storlek is false %}
         <p class="kortbesked kortbesked-smal">
           Filerna skiljer sig i storlek. Samma utgåva kan ha hämtats från ett
           annat håll eller med annan kvalitet.
+        </p>
+      {% elif kandidat.samma_storlek %}
+        <p class="kortbesked kortbesked-smal">
+          Lika stora filer. Boken i Calibre verkar redan vara den här, så
+          det räcker att koppla dem.
         </p>
       {% endif %}
 
@@ -89,7 +93,9 @@
           <input type="hidden" name="book_id" value="{{ kandidat.book_id }}">
           <button>Koppla till bok {{ kandidat.book_id }}</button>
         </form>
-        {% if post.lokal_storlek %}
+        {# Lika stora filer betyder att en ersättning inte skulle ändra
+           något, och då är varningen om oåterkallelig radering fel besked. #}
+        {% if post.lokal_storlek and not kandidat.samma_storlek %}
           <form method="post" action="/issues/{{ post.issue.id }}/calibre/push" class="inline"
                 hx-post="/issues/{{ post.issue.id }}/calibre/push"
                 hx-target="#calibre-forslag" hx-swap="outerHTML"

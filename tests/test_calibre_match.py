@@ -350,3 +350,32 @@ def test_ar_och_nummer_kraver_att_utgivaren_stammer(db, temp_env, gamla_bocker):
         forslag = calibre_match.find_candidates(session, KONFIG)
 
     assert forslag == []
+
+
+def test_lika_stora_filer_ar_inget_att_varna_for():
+    """En ersättning skulle inte ändra något, så varningen vore fel besked."""
+    assert calibre_match._samma_storlek(16379542, 16379542) is True
+    # Calibre skriver in metadata i PDF:en: 59 416 bytes på 15 MB.
+    assert calibre_match._samma_storlek(15374128, 15433544) is True
+    assert calibre_match._samma_storlek(17307909, 15433544) is False
+    # Utan lokal fil finns inget att jämföra.
+    assert calibre_match._samma_storlek(None, 15433544) is None
+    assert calibre_match._samma_storlek(15433544, None) is None
+
+
+def test_kandidaten_bar_med_sig_storleksjamforelsen(db, temp_env, bibliotek):
+    with db() as session:
+        publication = _publikation(session)
+        issue, _ = repo.upsert_issue(
+            session, publication,
+            {"uid": "1", "name": "2024-04-02", "publication_date": "2024-04-02"},
+        )
+        pdf = temp_env / "output" / "Tidningen Hemslöjd" / "lika.pdf"
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        # Exakt samma storlek som bok 1541 i fixturen.
+        pdf.write_bytes(b"x" * 15433544)
+        issue.file_path = str(pdf)
+        session.flush()
+        forslag = calibre_match.find_candidates(session, KONFIG)
+
+    assert forslag[0].kandidater[0].samma_storlek is True

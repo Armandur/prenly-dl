@@ -47,6 +47,12 @@ ARNUMMER = re.compile(r"^(\d{4})-(\d{1,2})\b")
 MINSTA_POANG = POANG_FORFATTARE
 
 
+# Calibre skriver in metadata i PDF:en, vilket ensamt gav 59 416 bytes
+# skillnad på en fil om 15 MB. Under en procent är alltså inte ett tecken
+# på olika innehåll.
+STORLEKSTOLERANS = 0.01
+
+
 @dataclass
 class Kandidat:
     book_id: int
@@ -55,6 +61,8 @@ class Kandidat:
     datum: str
     storlek: int | None
     poang: int
+    # None när någon av filerna saknas och det inte går att jämföra.
+    samma_storlek: bool | None = None
 
 
 @dataclass
@@ -81,6 +89,18 @@ def ar_och_nummer(titel: str) -> tuple[int, int] | None:
     if not traff:
         return None
     return int(traff.group(1)), int(traff.group(2))
+
+
+def _samma_storlek(lokal: int | None, i_calibre: int | None) -> bool | None:
+    """Om filerna verkar vara samma. None när jämförelsen inte går att göra.
+
+    Lika storlek är inget bevis, men det säger att en ersättning inte
+    skulle ändra något - och då är varningen om oåterkallelig radering
+    fel besked.
+    """
+    if not lokal or not i_calibre:
+        return None
+    return abs(lokal - i_calibre) <= i_calibre * STORLEKSTOLERANS
 
 
 def _poang(
@@ -213,6 +233,7 @@ def find_candidates(
             }
             if not traffar:
                 continue
+            lokal_storlek = _lokal_storlek(issue)
             kandidater = [
                 Kandidat(
                     book_id=bok["id"],
@@ -221,6 +242,9 @@ def find_candidates(
                     datum=calibre_api.bok_datum(bok),
                     storlek=calibre_api.bok_storlek(bok),
                     poang=_poang(vantad, publication.name, datum, bok, arnummer),
+                    samma_storlek=_samma_storlek(
+                        lokal_storlek, calibre_api.bok_storlek(bok)
+                    ),
                 )
                 for bok in traffar.values()
             ]
@@ -233,7 +257,7 @@ def find_candidates(
                     issue=issue,
                     publication=publication,
                     vantad_titel=vantad,
-                    lokal_storlek=_lokal_storlek(issue),
+                    lokal_storlek=lokal_storlek,
                     kandidater=kandidater,
                 )
             )
