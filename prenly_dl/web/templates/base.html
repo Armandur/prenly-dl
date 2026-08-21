@@ -104,6 +104,22 @@
       });
     })();
   </script>
+  {# Ett påbörjat men osparat fält får inte försvinna för att pollningen
+     byter ut tabellen. Markeringen läses av triggervillkoret. #}
+  <script>
+    (() => {
+      document.body.addEventListener("input", (event) => {
+        const form = event.target.closest("form.rubrikfalt-rad, form.rubrikfalt");
+        if (form) form.classList.add("osparad");
+      });
+      // Efter en lyckad sparning kommer ett nytt fält med det sparade
+      // värdet, så markeringen ska inte följa med.
+      document.body.addEventListener("htmx:afterSwap", () => {
+        document.querySelectorAll(".osparad").forEach((f) => f.classList.remove("osparad"));
+      });
+    })();
+  </script>
+
   {# Markering av utgåvor. Delegerat på body eftersom htmx byter ut
      utgåvesektionen vid bläddring, pollning och batchåtgärder - en
      lyssnare per kryssruta skulle sluta fungera efter första swappen. #}

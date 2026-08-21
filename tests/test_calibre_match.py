@@ -519,3 +519,27 @@ def test_paafyllningsjobbet_skriver_ett_anrop_per_bok(db, temp_env, magra_bocker
     assert "series:Tidningen Hemslöjd" in for_1541
     # Årets första utgåva i testdatat, alltså 2024.1.
     assert "series_index:2024.1" in for_1541
+
+
+def test_pollningen_pausas_av_osparad_rubrik(db, temp_env, bibliotek, monkeypatch):
+    """Pollningen byter ut hela tabellen och nollade fältet mitt i skrivandet."""
+    from prenly_dl.db.models import IssueStatus
+
+    with db() as session:
+        publication = _publikation(session)
+        publication.enabled = True
+        issue, _ = repo.upsert_issue(
+            session, publication,
+            {"uid": "1", "name": "2024-04-02", "publication_date": "2024-04-02"},
+        )
+        issue.status = IssueStatus.QUEUED.value
+        session.commit()
+        slug = publication.slug
+
+    with _klient(temp_env, monkeypatch) as client:
+        text = client.get(f"/publications/{slug}").text
+
+    # Pollningen är igång eftersom en utgåva står i kö, men villkoret
+    # hindrar den medan ett fält har osparad text.
+    assert "every 5s" in text
+    assert "osparad" in text

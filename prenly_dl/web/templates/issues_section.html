@@ -2,7 +2,10 @@
    varje öppen publikationssida fråga i onödan. #}
 <div id="utgavor"
      hx-get="/publications/{{ publication.slug }}/issues?page={{ page }}"
-     hx-trigger="utgavor-andrade from:body{% if pagar %}, every 5s{% endif %}"
+     {# Pollningen byter ut hela tabellen. Villkoret pausar den medan en
+        rubrik är påbörjad men inte sparad, annars nollas fältet mitt i
+        skrivandet. #}
+     hx-trigger="utgavor-andrade from:body{% if pagar %}, every 5s [!htmx.find('#utgavor .rubrikfalt-rad.osparad')]{% endif %}"
      hx-swap="outerHTML">
 {% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
 <h2>Utgåvor</h2>

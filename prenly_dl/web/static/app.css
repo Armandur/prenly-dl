@@ -366,3 +366,8 @@ button.htmx-request::after {
 .berikning .card-actions { margin-top: 1rem; }
 .berikning details { margin: 0.75rem 0 0; }
 .berikning table { margin-bottom: 0; font-size: 0.85rem; }
+
+/* Ett fält med osparad text: markeringen styr också pollningen, så den
+   ska synas för den som skriver. */
+.rubrikfalt-rad.osparad input,
+.rubrikfalt.osparad input { border-color: var(--pico-primary); }
