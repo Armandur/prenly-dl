@@ -368,6 +368,66 @@ def berikningar(session, config: CalibreConfig) -> list[Berikning]:
     return resultat
 
 
+@dataclass
+class Titelrattning:
+    """En bok vars titel skiljer sig från vad mönstret ger."""
+
+    issue_id: int
+    book_id: int
+    utgava: str
+    nuvarande: str
+    ny: str
+
+
+def titelrattningar(session, config: CalibreConfig) -> list[Titelrattning]:
+    """Kopplade böcker vars titel inte stämmer med publikationens mönster.
+
+    Till skillnad från berikningar är det här en överskrivning: titeln
+    finns redan och byts ut. Därför rättas bara böcker där mönstret gav
+    en fullständig titel - föll det tillbaka på standarden vet vi inte
+    bättre än den som döpte boken.
+    """
+    if not config.configured:
+        return []
+    bibliotek = calibre_api.fetch_library(config)
+
+    resultat: list[Titelrattning] = []
+    for publication in repo.list_publications(session):
+        if not publication.calibre_title.strip():
+            # Utan eget mönster blir vår titel bara publikation plus
+            # datum, vilket sällan är bättre än det som står i Calibre.
+            continue
+        nummer_per_datum = repo.issue_numbers_by_date(session, publication.title)
+        for issue in repo.issues_with_calibre_id(session, publication.title_id):
+            bok = bibliotek.bok(issue.calibre_id)
+            if bok is None:
+                continue
+            nuvarande = str(bok.get("title") or "").strip()
+            ny = format_title(
+                publication.calibre_title,
+                publikation=publication.name,
+                utgava=issue.name,
+                datum=issue.publication_date or "",
+                rubrik=issue.headline,
+                nummer=nummer_per_datum.get(issue.publication_date),
+            )
+            standard = format_title(
+                "", publikation=publication.name, utgava=issue.name
+            )
+            if ny == standard or not nuvarande or ny == nuvarande:
+                continue
+            resultat.append(
+                Titelrattning(
+                    issue_id=issue.id,
+                    book_id=issue.calibre_id,
+                    utgava=issue.name,
+                    nuvarande=nuvarande,
+                    ny=ny,
+                )
+            )
+    return resultat
+
+
 def tillatna_bocker(session, config: CalibreConfig) -> set[int]:
     """Bok-id som webbui:t får hämta omslag och filer för.
 

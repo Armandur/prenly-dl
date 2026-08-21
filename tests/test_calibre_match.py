@@ -543,3 +543,64 @@ def test_pollningen_pausas_av_osparad_rubrik(db, temp_env, bibliotek, monkeypatc
     # hindrar den medan ett fält har osparad text.
     assert "every 5s" in text
     assert "osparad" in text
+
+
+# --------------------------------------------------------------------------
+# Omskrivning av titlar
+# --------------------------------------------------------------------------
+
+
+def test_titeln_rattas_bara_nar_monstret_gav_en_full_titel(db, temp_env, magra_bocker):
+    """Föll mönstret tillbaka vet vi inte bättre än den som döpte boken."""
+    with db() as session:
+        publication = _publikation(session, monster="{år}-{nummer} - {rubrik}")
+        publication.title.catalogue_complete = True
+        med_rubrik = _koppla(session, publication, "2024-04-02", 1541)
+        med_rubrik.headline = "Hitta gnistan!"
+        # Utan rubrik faller mönstret tillbaka på standarden.
+        _koppla(session, publication, "2023-03-27", 1384)
+        session.flush()
+        poster = {p.book_id: p for p in calibre_match.titelrattningar(session, KONFIG)}
+
+    assert 1384 not in poster
+    assert poster[1541].nuvarande == "2024-2 - Hitta gnistan!"
+
+
+def test_ingen_rattning_utan_eget_monster(db, temp_env, magra_bocker):
+    """Publikation plus datum är sällan bättre än det som står i Calibre."""
+    with db() as session:
+        publication = _publikation(session, monster="")
+        publication.title.catalogue_complete = True
+        issue = _koppla(session, publication, "2024-04-02", 1541)
+        issue.headline = "Hitta gnistan!"
+        session.flush()
+        assert calibre_match.titelrattningar(session, KONFIG) == []
+
+
+def test_rattningen_byter_bara_titeln(db, temp_env, magra_bocker, monkeypatch):
+    from prenly_dl import services
+    from prenly_dl.db.models import Job, JobStatus
+
+    with db() as session:
+        publication = _publikation(session, monster="{år}-{nummer} - {rubrik}")
+        publication.title.catalogue_complete = True
+        issue = _koppla(session, publication, "2024-04-02", 1541)
+        issue.headline = "Något annat"
+        repo.set_setting(session, calibre.ENABLED_KEY, "on")
+        repo.set_setting(session, calibre.URL_KEY, "http://tervo2:8881")
+        repo.set_setting(session, calibre.LIBRARY_KEY, "ebooks")
+        job = repo.enqueue_retitle(session)
+        job_id = job.id
+
+    korda = []
+    monkeypatch.setattr(calibre, "run", lambda config, argv: korda.append(argv) or "")
+
+    with db() as session:
+        services.execute_job(session, repo.claim_next_job(session))
+
+    with db() as session:
+        assert session.get(Job, job_id).status == JobStatus.DONE.value
+    assert len(korda) == 1
+    # Bara titeln rörs: serie och datum hör till påfyllningen.
+    falt = [korda[0][i + 1] for i, a in enumerate(korda[0]) if a == "--field"]
+    assert falt == ["title:2024-1 - Något annat"]

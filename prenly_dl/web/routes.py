@@ -1098,6 +1098,7 @@ def _calibrekontext(session, kortmeddelande: str = "") -> dict:
         "konfigurerad": config.configured,
         "forslag": [],
         "berikningar": [],
+        "titelrattningar": [],
         "fel": None,
         "kortmeddelande": kortmeddelande,
     }
@@ -1106,6 +1107,7 @@ def _calibrekontext(session, kortmeddelande: str = "") -> dict:
     try:
         kontext["forslag"] = calibre_match.cached_candidates(session, config)
         kontext["berikningar"] = calibre_match.berikningar(session, config)
+        kontext["titelrattningar"] = calibre_match.titelrattningar(session, config)
     except calibre.CalibreError as error:
         kontext["fel"] = f"Kunde inte läsa biblioteket: {error}"
     return kontext
@@ -1126,6 +1128,27 @@ def enrich_calibre(request: Request):
             besked = "Påfyllningen är redan igång"
         else:
             besked = f"Köade påfyllning av {antal} böcker"
+    return _calibrefragment(request, besked)
+
+
+@router.post("/calibre/retitle")
+def retitle_calibre(request: Request):
+    """Köa en omskrivning av titlar som inte stämmer med mönstret."""
+    with get_session() as session:
+        config = calibre.load_config(session)
+        antal = (
+            len(calibre_match.titelrattningar(session, config))
+            if config.configured else 0
+        )
+        job = repo.enqueue_retitle(session) if antal else None
+        if not config.configured:
+            besked = "Calibre är inte inställt"
+        elif not antal:
+            besked = "Inga titlar skiljer sig från mönstret"
+        elif job is None:
+            besked = "Omskrivningen är redan igång"
+        else:
+            besked = f"Köade omskrivning av {antal} titlar"
     return _calibrefragment(request, besked)
 
 

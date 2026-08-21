@@ -593,6 +593,44 @@ def run_enrich_job(session: Session, job: Job) -> str:
     return besked
 
 
+def run_retitle_job(session: Session, job: Job) -> str:
+    """Skriv om titeln på kopplade böcker efter publikationens mönster.
+
+    Till skillnad från påfyllningen skriver den här över något som redan
+    står i Calibre, så vad som byts ska ha visats innan jobbet köades.
+    """
+    config = calibre.load_config(session)
+    if not config.configured:
+        raise PrenlyError("Calibre är inte inställt")
+
+    poster = calibre_match.titelrattningar(session, config)
+    if not poster:
+        return "Inga titlar skiljer sig från mönstret"
+
+    skrivna, fel = 0, 0
+    for gjort, post in enumerate(poster, start=1):
+        try:
+            calibre.run(
+                config,
+                calibre.build_metadata_argv(config, post.book_id, {"title": post.ny}),
+            )
+        except calibre.CalibreError as error:
+            logger.warning("Kunde inte byta titel på bok %s: %s", post.book_id, error)
+            fel += 1
+            continue
+        skrivna += 1
+        if gjort % 10 == 0 or gjort == len(poster):
+            session.commit()
+            repo.update_job_progress(job.id, gjort, len(poster))
+
+    calibre_api.glom_cache()
+    calibre_match.glom_forslag()
+    besked = f"{skrivna} titlar rättade"
+    if fel:
+        besked += f", {fel} gick inte att skriva"
+    return besked
+
+
 def run_download_job(session: Session, job: Job) -> str:
     """Ladda ner utgåvan som jobbet pekar på."""
     issue: Issue | None = repo.get_issue(session, job.issue_id) if job.issue_id else None
@@ -754,6 +792,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_headlines_job(session, job)
         elif job.type == JobType.ENRICH.value:
             summary = run_enrich_job(session, job)
+        elif job.type == JobType.RETITLE.value:
+            summary = run_retitle_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:

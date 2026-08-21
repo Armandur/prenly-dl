@@ -1,6 +1,43 @@
 <div id="calibre-forslag">
 {% if kortmeddelande %}<p class="kortbesked">{{ kortmeddelande }}</p>{% endif %}
 
+{% if titelrattningar %}
+  <article class="berikning berikning-varning">
+    <strong>{{ titelrattningar|length }} böcker har en titel som inte stämmer med mönstret.</strong>
+    <p class="muted">
+      Det här skriver över titeln som står i Calibre, till skillnad från
+      påfyllningen nedan. Bara böcker där mönstret gav en fullständig
+      titel tas med.
+    </p>
+    <details>
+      <summary class="muted">Visa vad som byts</summary>
+      <div class="scroll-x">
+      <table>
+        <thead><tr><th>Utgåva</th><th>Bok</th><th>Står nu</th><th>Blir</th></tr></thead>
+        <tbody>
+        {% for post in titelrattningar %}
+          <tr>
+            <td>{{ post.utgava }}</td>
+            <td class="muted">{{ post.book_id }}</td>
+            <td class="muted">{{ post.nuvarande }}</td>
+            <td><strong>{{ post.ny }}</strong></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </details>
+    <div class="card-actions">
+      <form method="post" action="/calibre/retitle"
+            hx-post="/calibre/retitle" hx-target="#calibre-forslag" hx-swap="outerHTML"
+            hx-confirm="Skriv om {{ titelrattningar|length }} titlar i Calibre?"
+            data-confirm-warning="Titlarna som står i Calibre ersätts. Den gamla titeln går inte att få tillbaka.">
+        <button>Rätta titlarna</button>
+      </form>
+    </div>
+  </article>
+{% endif %}
+
 {% if berikningar %}
   {% set falt = berikningar|map(attribute="falt")|map("list")|sum(start=[]) %}
   <article class="berikning">

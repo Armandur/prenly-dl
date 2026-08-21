@@ -371,3 +371,7 @@ button.htmx-request::after {
    ska synas för den som skriver. */
 .rubrikfalt-rad.osparad input,
 .rubrikfalt.osparad input { border-color: var(--pico-primary); }
+
+/* Omskrivning av titlar ersätter något som redan står i Calibre, till
+   skillnad från påfyllningen. Det ska synas innan man trycker. */
+.berikning-varning { border-left-color: #c9403f; }

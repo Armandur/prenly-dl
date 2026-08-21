@@ -597,14 +597,23 @@ def enqueue_headlines(session: Session, publication_id: int) -> Job | None:
     return job
 
 
+def enqueue_retitle(session: Session) -> Job | None:
+    return _enqueue_singeljobb(session, JobType.RETITLE)
+
+
 def enqueue_enrich(session: Session) -> Job | None:
+    return _enqueue_singeljobb(session, JobType.ENRICH)
+
+
+def _enqueue_singeljobb(session: Session, typ: JobType) -> Job | None:
+    """Ett jobb av typen åt gången, oavsett publikation."""
     pagaende = session.execute(select(Job).where(
-        Job.type == JobType.ENRICH.value,
+        Job.type == typ.value,
         Job.status.in_([JobStatus.QUEUED.value, JobStatus.RUNNING.value]),
     )).first()
     if pagaende:
         return None
-    job = Job(type=JobType.ENRICH.value, status=JobStatus.QUEUED.value)
+    job = Job(type=typ.value, status=JobStatus.QUEUED.value)
     session.add(job)
     session.flush()
     return job

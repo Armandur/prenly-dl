@@ -59,6 +59,9 @@ class JobType(str, Enum):
     # Fyller på uppgifter som saknas på böcker i Calibre. Ett anrop per
     # bok, så det hör hemma i kön.
     ENRICH = "enrich"
+    # Skriver om titeln på kopplade böcker. Skilt från enrich eftersom
+    # det är en överskrivning och inte en påfyllning av tomma fält.
+    RETITLE = "retitle"
 
 
 class Site(Base):
