@@ -45,13 +45,53 @@ def make_session_factory(path: Path | None = None) -> sessionmaker[Session]:
     target = Path(path) if path else db_path()
     if _session_factory is None or _engine is None or _engine.url.database != str(target):
         _engine = _make_engine(target)
-        # Skapar tabeller som saknas. Ändras ett befintligt schema behöver
-        # databasfilen tas bort - tjänsten är inte i drift och katalogen
-        # bygger upp sig själv igen från sajternas titellistor.
         Base.metadata.create_all(_engine)
+        _lagg_till_saknade_kolumner(_engine)
         _session_factory = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
         logger.info("Databas: %s", target)
     return _session_factory
+
+
+def _lagg_till_saknade_kolumner(engine) -> None:
+    """Lägg till kolumner som modellerna fått sedan databasen skapades.
+
+    create_all skapar bara tabeller som saknas helt, aldrig kolumner i en
+    som redan finns. Efter en uppdatering kraschade därför varje sida som
+    rörde ett nytt fält med "no such column", medan tjänsten såg frisk ut
+    - healthz svarade, och bara vyerna föll.
+
+    Bara tillägg görs. Att ändra eller ta bort en kolumn kräver mer
+    eftertanke än ett automatiskt steg vid uppstart tål.
+    """
+    with engine.begin() as conn:
+        for tabell in Base.metadata.sorted_tables:
+            fanns = {
+                rad[1]
+                for rad in conn.exec_driver_sql(
+                    f"PRAGMA table_info({tabell.name})"
+                ).fetchall()
+            }
+            if not fanns:
+                continue
+            for kolumn in tabell.columns:
+                if kolumn.name in fanns:
+                    continue
+                typ = kolumn.type.compile(engine.dialect)
+                default = ""
+                if kolumn.default is not None and not callable(
+                    getattr(kolumn.default, "arg", None)
+                ):
+                    varde = kolumn.default.arg
+                    if isinstance(varde, bool):
+                        default = f" DEFAULT {int(varde)}"
+                    elif isinstance(varde, (int, float)):
+                        default = f" DEFAULT {varde}"
+                    elif isinstance(varde, str):
+                        default = " DEFAULT '" + varde.replace("'", "''") + "'"
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {tabell.name} ADD COLUMN {kolumn.name} {typ}{default}"
+                )
+                logger.info("La till kolumnen %s.%s", tabell.name, kolumn.name)
 
 
 def init_db(path: Path | None = None) -> None:
