@@ -54,7 +54,7 @@ from ..services import (
     verify_site,
 )
 from .auth import check_password, is_authenticated
-from .. import calibre, calibre_api, calibre_match
+from .. import calibre, calibre_api, calibre_match, notify
 from .library import folder_usage, library_rel_path, resolve_file
 from .path_browser import browse_roots, directory_payload, resolve_allowed_directory
 from .rendering import back, flash, render
@@ -1458,6 +1458,7 @@ def calibre_file(book_id: int):
 def settings_page(request: Request):
     with get_session() as session:
         calibre_config = calibre.load_config(session)
+        notify_config = notify.load_config(session)
         poll_cron = repo.get_setting(session, POLL_CRON_KEY, DEFAULT_POLL_CRON)
         history_days = repo.get_setting(
             session, JOB_HISTORY_DAYS_KEY, str(DEFAULT_JOB_HISTORY_DAYS)
@@ -1468,6 +1469,7 @@ def settings_page(request: Request):
         "settings.html",
         poll_cron=poll_cron,
         calibre=calibre_config,
+        notify=notify_config,
         history_days=history_days,
         output_dir=output_root(),
         timezone=timezone_name(),
@@ -1516,6 +1518,31 @@ def save_calibre_settings(
         if password:
             repo.set_setting(session, calibre.PASSWORD_KEY, password)
     flash(request, "Calibre-inställningarna sparade", "success")
+    return back("/settings")
+
+
+@router.post("/settings/notify")
+def save_notify_settings(
+    request: Request,
+    enabled: str = Form(""),
+    url: str = Form(""),
+    topic: str = Form(""),
+    token: str = Form(""),
+    webhook_url: str = Form(""),
+):
+    """Spara notifieringsuppgifterna.
+
+    Ett tomt tokenfält betyder oförändrat, eftersom hemligheten aldrig
+    fylls tillbaka i formuläret.
+    """
+    with get_session() as session:
+        repo.set_setting(session, notify.ENABLED_KEY, "on" if enabled else "")
+        repo.set_setting(session, notify.URL_KEY, url.strip())
+        repo.set_setting(session, notify.TOPIC_KEY, topic.strip())
+        repo.set_setting(session, notify.WEBHOOK_URL_KEY, webhook_url.strip())
+        if token:
+            repo.set_setting(session, notify.TOKEN_KEY, token)
+    flash(request, "Notifieringsinställningarna sparade", "success")
     return back("/settings")
 
 

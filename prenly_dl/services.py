@@ -22,7 +22,7 @@ from .api import (
     login,
 )
 from .config import output_root
-from . import calibre, calibre_api, calibre_match
+from . import calibre, calibre_api, calibre_match, notify
 from .covers import fetch_and_cache_cover
 from .discover import discover
 from .db import repository as repo
@@ -225,9 +225,26 @@ def _record_error(
                     session.add(access)
         return
     if isinstance(error, PrenlyAuthError):
-        repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+        _set_auth_error(session, site, error)
     elif site is not None:
         repo.set_site_status(session, site, AuthStatus.ERROR, str(error))
+
+
+def _skicka_notis(session: Session, titel: str, meddelande: str) -> None:
+    config = notify.load_config(session)
+    notify.send_all(notify.build_channels(config), titel, meddelande)
+
+
+def _set_auth_error(session: Session, site, error: Exception) -> None:
+    """Märk sajten och meddela bara när den går över till auth_error."""
+    redan_utloggad = site.auth_status == AuthStatus.AUTH_ERROR.value
+    repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+    if not redan_utloggad:
+        _skicka_notis(
+            session,
+            "Inloggningsuppgifter har slutat gälla",
+            f"{site.url}: {error}",
+        )
 
 
 def synka_titlar(session: Session, site, titles: list[dict]) -> tuple[int, int]:
@@ -362,10 +379,10 @@ def verify_site(session: Session, site) -> AuthStatus:
                 token = get_context_token(http, creds)
                 titles = get_titles(http, creds, token)
             except PrenlyError as andra_felet:
-                repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(andra_felet))
+                _set_auth_error(session, site, andra_felet)
                 return AuthStatus(site.auth_status)
         else:
-            repo.set_site_status(session, site, AuthStatus.AUTH_ERROR, str(error))
+            _set_auth_error(session, site, error)
             return AuthStatus(site.auth_status)
     except PrenlyError as error:
         repo.set_site_status(session, site, AuthStatus.ERROR, str(error))
@@ -825,6 +842,11 @@ def run_download_job(session: Session, job: Job) -> str:
         issue.status = IssueStatus.ERROR.value
         issue.error = str(fel)
         session.add(issue)
+        _skicka_notis(
+            session,
+            "Nedladdning misslyckades",
+            f"{publication.name}, {issue.name}: {fel}",
+        )
         raise fel
 
     http = build_session()
@@ -854,6 +876,11 @@ def run_download_job(session: Session, job: Job) -> str:
             issue.error = str(error)
             session.add(issue)
             _record_error(session, publication, kandidat, error)
+            _skicka_notis(
+                session,
+                "Nedladdning misslyckades",
+                f"{publication.name}, {issue.name}: {error}",
+            )
             raise
         site = kandidat
         break
@@ -866,6 +893,11 @@ def run_download_job(session: Session, job: Job) -> str:
         issue.status = IssueStatus.ERROR.value
         issue.error = str(fel)
         session.add(issue)
+        _skicka_notis(
+            session,
+            "Nedladdning misslyckades",
+            f"{publication.name}, {issue.name}: {fel}",
+        )
         raise fel
 
     if site is not sajter[0]:
@@ -904,6 +936,12 @@ def run_download_job(session: Session, job: Job) -> str:
         *([f"Provade först: {', '.join(provade)}"] if provade else []),
         *([f"Calibre: bok {issue.calibre_id}"] if issue.calibre_id else []),
     ])
+    if not result.skipped:
+        _skicka_notis(
+            session,
+            "Utgåva hämtad",
+            f"{publication.name}, {issue.name}: {result.page_count} sidor",
+        )
     return f"{besked}{calibre_besked}"
 
 

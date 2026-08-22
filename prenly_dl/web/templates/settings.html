@@ -241,6 +241,40 @@
 </article>
 
 <article>
+  <h2>Notifieringar</h2>
+  <p class="muted">
+    Skicka besked när en utgåva hämtats, en nedladdning misslyckats eller
+    inloggningsuppgifter har slutat gälla.
+  </p>
+  <form method="post" action="/settings/notify">
+    <label>
+      <input type="checkbox" name="enabled" {% if notify.enabled %}checked{% endif %}>
+      Skicka notifieringar
+    </label>
+    <div class="grid">
+      <label>ntfy-adress
+        <input name="url" value="{{ notify.url }}"
+               placeholder="https://ntfy.example.se">
+      </label>
+      <label>ntfy-topic
+        <input name="topic" value="{{ notify.topic }}" placeholder="svc_prenly_dl">
+      </label>
+    </div>
+    <label>ntfy-token
+      <input type="password" name="token" autocomplete="new-password"
+             placeholder="{{ "oförändrad" if notify.token else "" }}">
+      <small>Tomt fält lämnar token oförändrad.</small>
+    </label>
+    <label>Webhook-adress
+      <input name="webhook_url" value="{{ notify.webhook_url }}"
+             placeholder="https://example.se/webhook">
+      <small>Lämna tomt om webhook inte ska användas.</small>
+    </label>
+    <button type="submit">Spara</button>
+  </form>
+</article>
+
+<article>
   <h2>Importera gamla konfigurationsfiler</h2>
   <p class="muted">Läser in alla <code>*.json</code> i katalogen och skapar publikationer av dem.</p>
   <form method="post" action="/settings/import">
