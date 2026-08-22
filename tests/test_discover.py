@@ -177,7 +177,8 @@ def test_vyn_visar_bara_sajter_som_inte_ar_tillagda(db, temp_env, monkeypatch):
         text = client.get("/credentials").text
 
     assert "sydsvenskan.se" in text
-    assert "1 sajter som inte är tillagda" in text
+    # Antalet räknas nu i sökrutan, av skriptet, så det som mäts är raderna.
+    assert text.count('class="sajt-rad"') == 1
     # Den tillagda ska inte erbjudas igen.
     assert text.count('value="https://etidning.dn.se"') == 0
 
