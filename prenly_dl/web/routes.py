@@ -1546,6 +1546,55 @@ def save_notify_settings(
     return back("/settings")
 
 
+@router.post("/settings/notify/test")
+def test_notify(
+    request: Request,
+    enabled: str = Form(""),
+    url: str = Form(""),
+    topic: str = Form(""),
+    token: str = Form(""),
+    webhook_url: str = Form(""),
+):
+    """Skicka en provnotis med det som står i formuläret.
+
+    Uppgifterna tas ur formuläret och inte ur databasen, så de går att
+    prova innan de sparas. Tomt tokenfält betyder det sparade, precis
+    som vid sparning.
+    """
+    with get_session() as session:
+        sparat = notify.load_config(session)
+    config = notify.NotifyConfig(
+        enabled=True,
+        url=url.strip() or sparat.url,
+        topic=topic.strip() or sparat.topic,
+        token=token or sparat.token,
+        webhook_url=webhook_url.strip() or sparat.webhook_url,
+    )
+    kanaler = notify.build_channels(config)
+    if not kanaler:
+        flash(request, "Fyll i en ntfy-adress med topic, eller en webhook", "error")
+        return back("/settings")
+
+    # send_all sväljer fel, men här är felet hela poängen med knappen.
+    fel = []
+    for kanal in kanaler:
+        try:
+            kanal.send(
+                "prenly-dl",
+                "Provnotis från inställningarna. Går den fram fungerar även "
+                "meddelanden om hämtade utgåvor och utgångna uppgifter.",
+            )
+        except Exception as error:  # noqa: BLE001 - allt som gick fel ska visas
+            fel.append(f"{kanal.name}: {error}")
+
+    if fel:
+        flash(request, "Provnotisen misslyckades. " + " ".join(fel), "error")
+    else:
+        namn = ", ".join(k.name for k in kanaler)
+        flash(request, f"Provnotis skickad via {namn}", "success")
+    return back("/settings")
+
+
 @router.post("/settings/calibre/test")
 def test_calibre(
     request: Request,
