@@ -81,3 +81,43 @@ def test_befintliga_varden_ror_inte_vid_tillagg(tmp_path, monkeypatch):
 
     session_module._engine = None
     session_module._session_factory = None
+
+
+# --------------------------------------------------------------------------
+# Schemaläggaren
+# --------------------------------------------------------------------------
+
+
+def test_schemat_gar_att_stanga_av(monkeypatch):
+    """Två instanser mot samma Calibre gav dubbletter av dagens nummer."""
+    from prenly_dl.config import scheduler_enabled
+
+    monkeypatch.delenv("PRENLY_NO_SCHEDULER", raising=False)
+    assert scheduler_enabled() is True
+
+    for varde in ("1", "true", "ja", "JA", "Yes"):
+        monkeypatch.setenv("PRENLY_NO_SCHEDULER", varde)
+        assert scheduler_enabled() is False, varde
+
+    for varde in ("", "0", "nej"):
+        monkeypatch.setenv("PRENLY_NO_SCHEDULER", varde)
+        assert scheduler_enabled() is True, varde
+
+
+def test_appen_startar_inte_schemat_nar_det_ar_avstangt(temp_env, monkeypatch):
+    from fastapi.testclient import TestClient
+    import prenly_dl.web.app as app_module
+
+    startade = {"n": 0}
+    monkeypatch.setattr(app_module, "start_scheduler", lambda: startade.__setitem__("n", startade["n"] + 1))
+    monkeypatch.setattr(app_module, "shutdown_scheduler", lambda: None)
+
+    monkeypatch.setenv("PRENLY_NO_SCHEDULER", "1")
+    with TestClient(app_module.create_app()):
+        pass
+    assert startade["n"] == 0
+
+    monkeypatch.delenv("PRENLY_NO_SCHEDULER")
+    with TestClient(app_module.create_app()):
+        pass
+    assert startade["n"] == 1

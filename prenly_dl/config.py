@@ -23,6 +23,19 @@ def output_root() -> Path:
     return Path(os.environ.get(OUTPUT_ENV_VAR, DEFAULT_OUTPUT)).expanduser().resolve()
 
 
+def scheduler_enabled() -> bool:
+    """Om schemat ska köra. Av med PRENLY_NO_SCHEDULER=1.
+
+    Två instanser mot samma Calibre skapade dubbletter: båda hämtade
+    dagens nummer och la in var sin bok, eftersom ingen kände till den
+    andras bok-id. En utvecklingsinstans bredvid den skarpa ska kunna
+    köras utan att göra samma jobb.
+    """
+    return os.environ.get("PRENLY_NO_SCHEDULER", "").strip().lower() not in (
+        "1", "true", "ja", "yes",
+    )
+
+
 def timezone_name() -> str:
     return os.environ.get(TZ_ENV_VAR, DEFAULT_TZ)
 

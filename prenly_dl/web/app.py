@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ..config import output_root, secret_key
 from ..db.session import init_db
+from ..config import scheduler_enabled
 from ..scheduler import shutdown_scheduler, start_scheduler
 from .auth import require_login
 from .dashboard_routes import router as dashboard_router
@@ -30,7 +31,10 @@ async def lifespan(app: FastAPI):
     )
     init_db()
     output_root().mkdir(parents=True, exist_ok=True)
-    start_scheduler()
+    if scheduler_enabled():
+        start_scheduler()
+    else:
+        logger.info("Schemaläggaren är avstängd med PRENLY_NO_SCHEDULER")
     try:
         yield
     finally:
