@@ -104,6 +104,11 @@ class Site(Base):
     # i klartext som resten av uppgifterna - databasfilen är hemligheten.
     username: Mapped[str] = mapped_column(String(255), default="")
     password: Mapped[str] = mapped_column(Text, default="")
+    # Läsaren kräver ingen inloggning. mitti.se ger alla sina 64 titlar
+    # utan konto. En sådan sajt förnyas med en ny anonym session, medan
+    # en inloggad utan lösenord ska rapportera fel så någon klistrar in
+    # nya uppgifter.
+    open_access: Mapped[bool] = mapped_column(Boolean, default=False)
     auth_status: Mapped[str] = mapped_column(String(32), default=AuthStatus.UNKNOWN.value)
     auth_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

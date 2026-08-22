@@ -45,6 +45,7 @@ from ..services import (
     DISCOVER_KEY,
     build_issue_preview,
     discover_titles,
+    add_site_anonymously,
     ensure_catalogue_depth,
     login_site,
     poll_publication,
@@ -398,21 +399,27 @@ def add_discovered_site(request: Request, url: str = Form(...)):
             return back("/credentials")
         anvandarnamn, losenord = med_login.username, med_login.password
 
+    utan_konto = False
     try:
         with get_session() as session:
-            site = login_site(session, url, anvandarnamn, losenord)
+            try:
+                site = login_site(session, url, anvandarnamn, losenord)
+            except PrenlyAuthError:
+                # Öppna läsare har ingen inloggning alls - mitti.se ger
+                # alla sina titlar utan konto. Då räcker en anonym session.
+                site = add_site_anonymously(session, url)
+                utan_konto = True
             status = verify_site(session, site)
             adress = site.url
-    except PrenlyAuthError as error:
-        flash(request, f"Inloggningen nekades på {url}: {error}", "error")
-        return back("/credentials")
     except PrenlyError as error:
         flash(request, f"Kunde inte lägga till {url}: {error}", "error")
         return back("/credentials")
 
     besked = f"La till {adress}"
+    if utan_konto:
+        besked += " utan inloggning"
     if status is not AuthStatus.OK:
-        besked += ", men uppgifterna gav ingen läsrätt"
+        besked += ", men den gav ingen läsrätt"
     flash(request, besked, "success" if status is AuthStatus.OK else "info")
     return back("/credentials")
 

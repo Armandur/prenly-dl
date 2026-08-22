@@ -170,7 +170,12 @@ def test_utgangen_session_loggar_in_igen_automatiskt(db, temp_env, monkeypatch):
     assert status is not AuthStatus.AUTH_ERROR
 
 
-def test_utan_sparat_losenord_blir_det_authfel_som_forr(db, temp_env, monkeypatch):
+def test_inklistrade_tokens_forlangs_inte_i_smyg(db, temp_env, monkeypatch):
+    """En anonym session hade sett ut att fungera men gett ingen läsrätt.
+
+    Sajter med inklistrade tokens ska rapportera fel, så någon klistrar
+    in nya - till skillnad från öppna läsare, som saknar inloggning.
+    """
     from prenly_dl import services
     from prenly_dl.db import repository as repo
     from prenly_dl.db.models import AuthStatus
@@ -293,3 +298,43 @@ def test_sajtkortet_visar_hur_uppgifterna_kom_till(temp_env, monkeypatch):
     # Bara en avvikande cdn är värd att nämna.
     assert "egen cdn: https://egen.cdn77.org" in text
     assert DEFAULT_CDN not in text.split("egen cdn")[0].split("Sparade")[-1]
+
+
+def test_oppen_lasare_far_en_ny_anonym_session(db, temp_env, monkeypatch):
+    """mitti.se ger alla sina 64 titlar utan konto och har inget lösenord."""
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+
+    monkeypatch.setattr(services, "fetch_client_key", lambda http, s: "NY")
+    monkeypatch.setattr(services, "create_session", lambda http, s, k: "ny-anonym")
+
+    def _far_inte_koras(*args, **kwargs):
+        raise AssertionError("inloggning försöktes på en öppen läsare")
+
+    monkeypatch.setattr(services, "login", _far_inte_koras)
+
+    with db() as session:
+        site = repo.upsert_site(
+            session, "https://etidning.mitti.se",
+            {"textalk-auth": "gammal", "auth": "utgangen"},
+        )
+        site.open_access = True
+        session.flush()
+
+        assert services.refresh_site_login(session, site) is True
+
+    assert site.auth == "ny-anonym"
+
+
+def test_anonymt_tillagd_sajt_markeras_som_oppen(db, temp_env, monkeypatch):
+    from prenly_dl import services
+
+    monkeypatch.setattr(services, "fetch_client_key", lambda http, s: "NYCKEL")
+    monkeypatch.setattr(services, "create_session", lambda http, s, k: "anonym")
+
+    with db() as session:
+        site = services.add_site_anonymously(session, "etidning.mitti.se")
+
+    assert site.open_access is True
+    assert site.username == "" and site.password == ""
+    assert site.auth == "anonym"

@@ -284,6 +284,30 @@ def login_site(
     )
     site.username = username
     site.password = password
+    site.open_access = False
+    session.add(site)
+    session.flush()
+    return site
+
+
+def add_site_anonymously(session: Session, url: str) -> Site:
+    """Lägg till en sajt utan inloggning.
+
+    Vissa läsare är öppna: mitti.se ger alla sina 64 titlar läsbara utan
+    konto, och di.se tio av nitton. För dem är en anonym session allt som
+    behövs, och att kräva inloggning hade stängt ute dem helt.
+    """
+    adress = url.strip().rstrip("/")
+    if not adress.startswith(("http://", "https://")):
+        adress = f"https://{adress}"
+
+    http = build_session()
+    klientnyckel = fetch_client_key(http, adress)
+    token = create_session(http, adress, klientnyckel)
+    site = repo.upsert_site(
+        session, adress, {"textalk-auth": klientnyckel, "auth": token},
+    )
+    site.open_access = True
     session.add(site)
     session.flush()
     return site
@@ -296,15 +320,22 @@ def refresh_site_login(session: Session, site: Site) -> bool:
     session ett anrop bort, i stället för att någon ska öppna läsaren och
     klistra in en token.
     """
-    if not site.username or not site.password:
+    har_uppgifter = bool(site.username and site.password)
+    if not har_uppgifter and not site.open_access:
+        # Tokens som klistrats in går bara att förnya för hand. Att tyst
+        # byta till en anonym session hade dolt att läsrätten är borta.
         return False
+
     http = build_session()
     try:
         klientnyckel = fetch_client_key(http, site.url)
         token = create_session(http, site.url, klientnyckel)
-        token = login(http, site.url, klientnyckel, token, site.username, site.password)
+        if har_uppgifter:
+            token = login(
+                http, site.url, klientnyckel, token, site.username, site.password
+            )
     except PrenlyError as error:
-        logger.warning("Kunde inte logga in på %s igen: %s", site.url, error)
+        logger.warning("Kunde inte förnya sessionen för %s: %s", site.url, error)
         return False
     site.textalk_auth = klientnyckel
     site.auth = token

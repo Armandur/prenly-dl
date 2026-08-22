@@ -230,3 +230,34 @@ def test_lagg_till_anvander_sparade_uppgifter(db, temp_env, monkeypatch):
     assert sedda["url"] == "https://etidning.sydsvenskan.se"
     assert sedda["username"] == "hej@example.com"
     assert "La till" in svar.text
+
+
+def test_listan_gar_att_soka_i_och_visar_oppna_lasare(db, temp_env, monkeypatch):
+    """49 rader är för många att ögna igenom, och alla kräver inte konto."""
+    import json
+    from prenly_dl import services
+    from prenly_dl.db import repository as repo
+
+    with db() as session:
+        repo.set_setting(session, services.DISCOVER_KEY, json.dumps([
+            {"doman": "mitti.se", "url": "https://etidning.mitti.se", "antal": 64,
+             "lasbara": 64, "titlar": ["Mitt i Bromma", "Magasin"], "fel": "", "kand": False},
+            {"doman": "di.se", "url": "https://etidning.di.se", "antal": 19,
+             "lasbara": 10, "titlar": ["Dagens industri"], "fel": "", "kand": False},
+            {"doman": "ljusnan.se", "url": "https://etidning.ljusnan.se", "antal": 29,
+             "lasbara": 0, "titlar": ["Ljusnan"], "fel": "", "kand": False},
+        ]))
+        session.commit()
+
+    with _klient(temp_env, monkeypatch) as client:
+        text = client.get("/credentials").text
+
+    # Sökrutan filtrerar på både sajt och titel, så båda finns i haystacken.
+    assert 'id="sajt-search"' in text
+    assert "mitt i bromma" in text.lower()
+    # Öppna läsare kräver ingen inloggning, delvis öppna kräver den ibland.
+    assert ">öppen<" in text
+    assert ">delvis öppen<" in text
+    # Ljusnan ger inget utan konto och ska inte märkas som öppen.
+    rad = text.split("ljusnan.se")[1][:400]
+    assert ">öppen<" not in rad
