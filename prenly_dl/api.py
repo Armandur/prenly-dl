@@ -55,6 +55,21 @@ class Credentials:
         self.cdn = (self.cdn or DEFAULT_CDN).rstrip("/")
 
 
+def build_probe_session() -> requests.Session:
+    """Session utan omförsök, för sondering av okända adresser.
+
+    build_session försöker om tre gånger med växande paus. Det är rätt
+    mot en server som svarar dåligt, men fel när man provar adresser som
+    kanske inte finns: uppmätt att 17 av 84 domäner saknar DNS helt, och
+    omförsöken kostade omkring två minuter utan att kunna hjälpa.
+    """
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+    session.mount("https://", HTTPAdapter(max_retries=Retry(total=0)))
+    session.mount("http://", HTTPAdapter(max_retries=Retry(total=0)))
+    return session
+
+
 def build_session() -> requests.Session:
     """Session med User-Agent och omförsök på tillfälliga serverfel."""
     session = requests.Session()

@@ -94,11 +94,23 @@ def test_lasare_som_inte_svarar_tas_med_med_felet(monkeypatch):
     assert "503" in fynd.fel
 
 
+def test_sonderingen_gor_inga_omforsok(monkeypatch):
+    """17 av 84 domäner saknar DNS, och omförsöken kostade två minuter."""
+    from prenly_dl.api import build_probe_session
+    from urllib3.util.retry import Retry
+
+    session = build_probe_session()
+    adapter = session.get_adapter("https://exempel.se")
+    assert isinstance(adapter.max_retries, Retry)
+    assert adapter.max_retries.total == 0
+
+
 def test_sonderingen_pausar_mellan_anropen(monkeypatch):
     """Sonderingen rör någon annans servrar."""
     pauser = []
     monkeypatch.setattr(discover.time, "sleep", lambda s: pauser.append(s))
     monkeypatch.setattr(discover, "fetch_brand_domains", lambda s: ["a.se", "b.se"])
+    monkeypatch.setattr(discover, "build_probe_session", lambda: None)
     monkeypatch.setattr(discover, "probe_site", lambda s, d: None)
 
     discover.discover(None)

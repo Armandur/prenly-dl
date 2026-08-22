@@ -22,6 +22,7 @@ import requests
 
 from .api import (
     Credentials,
+    build_probe_session,
     create_session,
     fetch_client_key,
     get_context_token,
@@ -110,9 +111,12 @@ def discover(
 ) -> list[Fynd]:
     """Sondera alla varumärken och returnera de som har en läsare."""
     domaner = fetch_brand_domains(session)
+    # Sonderingen provar adresser som ofta inte finns, och omförsök mot en
+    # domän utan DNS är bortkastad tid.
+    sond = build_probe_session()
     fynd: list[Fynd] = []
     for gjort, doman in enumerate(domaner, start=1):
-        traff = probe_site(session, doman)
+        traff = probe_site(sond, doman)
         if traff is not None:
             fynd.append(traff)
         if progress:
