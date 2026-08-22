@@ -382,3 +382,6 @@ button.htmx-request::after {
   max-height: 24rem; overflow: auto; white-space: pre-wrap;
   font-size: 0.8rem; line-height: 1.6;
 }
+
+/* Knappen i en trång tabellcell bröt "Lägg till" på två rader. */
+table .inline button { white-space: nowrap; }

@@ -601,6 +601,10 @@ def enqueue_headlines(session: Session, publication_id: int) -> Job | None:
     return job
 
 
+def enqueue_discover(session: Session) -> Job | None:
+    return _enqueue_singeljobb(session, JobType.DISCOVER)
+
+
 def enqueue_retitle(session: Session) -> Job | None:
     return _enqueue_singeljobb(session, JobType.RETITLE)
 

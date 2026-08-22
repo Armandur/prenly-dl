@@ -62,6 +62,9 @@ class JobType(str, Enum):
     # Skriver om titeln på kopplade böcker. Skilt från enrich eftersom
     # det är en överskrivning och inte en påfyllning av tomma fält.
     RETITLE = "retitle"
+    # Sonderar Bonniers varumärken efter Prenly-läsare. Inga inloggningar:
+    # en anonym session räcker för att se vilka titlar en sajt har.
+    DISCOVER = "discover"
 
 
 # Vad varje jobbtyp heter för en människa, och vad förloppet räknar.
@@ -74,6 +77,7 @@ JOBBTYPER: dict[str, tuple[str, str]] = {
     JobType.HEADLINES.value: ("Hämtar rubriker", "utgåvor"),
     JobType.ENRICH.value: ("Fyller på uppgifter i Calibre", "böcker"),
     JobType.RETITLE.value: ("Skriver om titlar i Calibre", "böcker"),
+    JobType.DISCOVER.value: ("Söker efter fler sajter", "varumärken"),
 }
 
 

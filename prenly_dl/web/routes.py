@@ -42,6 +42,7 @@ from ..scheduler import (
     reschedule_poll,
 )
 from ..services import (
+    DISCOVER_KEY,
     build_issue_preview,
     discover_titles,
     ensure_catalogue_depth,
@@ -318,7 +319,7 @@ def credentials_help(request: Request):
         sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=None,
-        standard_cdn=DEFAULT_CDN,
+        standard_cdn=DEFAULT_CDN, upptackta=_upptackta_sajter(),
         fyndfel=None, fyndsajter=None, sajter=sajter,
     )
 
@@ -344,10 +345,76 @@ def _rendera_fynd(
         sajter = [_sajtkontext(session, site) for site in repo.list_sites(session)]
     return render(
         request, "credentials.html", snutt=_konsolsnutt(), fynd=fynd,
-        standard_cdn=DEFAULT_CDN,
+        standard_cdn=DEFAULT_CDN, upptackta=_upptackta_sajter(),
         fyndfel=fyndfel, fyndvarning=fyndvarning, fyndsajter=fyndsajter,
         sajter=sajter,
     )
+
+
+def _upptackta_sajter() -> list[dict]:
+    """Senaste sonderingens fynd, med de redan tillagda bortsorterade."""
+    with get_session() as session:
+        radata = repo.get_setting(session, DISCOVER_KEY, "")
+        kanda = {s.url for s in repo.list_sites(session)}
+    if not radata:
+        return []
+    try:
+        poster = json.loads(radata)
+    except ValueError:
+        return []
+    return [p for p in poster if p.get("url") not in kanda]
+
+
+@router.post("/credentials/discover")
+def discover_sites(request: Request):
+    """Köa en sondering efter fler sajter hos Bonnier News."""
+    with get_session() as session:
+        job = repo.enqueue_discover(session)
+    besked = (
+        "Sökningen är redan igång" if job is None
+        else "Söker efter sajter. Det tar ett par minuter."
+    )
+    flash(request, besked, "info")
+    return back("/credentials")
+
+
+@router.post("/credentials/discover/add")
+def add_discovered_site(request: Request, url: str = Form(...)):
+    """Lägg till en upptäckt sajt genom att logga in på den.
+
+    Uppgifterna tas från en sajt som redan är inloggad: samma konto
+    gäller hos alla Bonnier-titlar.
+    """
+    with get_session() as session:
+        med_login = next(
+            (s for s in repo.list_sites(session) if s.username and s.password), None
+        )
+        if med_login is None:
+            flash(
+                request,
+                "Logga in på en sajt först, så används samma uppgifter här",
+                "error",
+            )
+            return back("/credentials")
+        anvandarnamn, losenord = med_login.username, med_login.password
+
+    try:
+        with get_session() as session:
+            site = login_site(session, url, anvandarnamn, losenord)
+            status = verify_site(session, site)
+            adress = site.url
+    except PrenlyAuthError as error:
+        flash(request, f"Inloggningen nekades på {url}: {error}", "error")
+        return back("/credentials")
+    except PrenlyError as error:
+        flash(request, f"Kunde inte lägga till {url}: {error}", "error")
+        return back("/credentials")
+
+    besked = f"La till {adress}"
+    if status is not AuthStatus.OK:
+        besked += ", men uppgifterna gav ingen läsrätt"
+    flash(request, besked, "success" if status is AuthStatus.OK else "info")
+    return back("/credentials")
 
 
 @router.post("/credentials/login")

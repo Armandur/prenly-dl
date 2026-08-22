@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,7 @@ from .api import (
 from .config import output_root
 from . import calibre, calibre_api, calibre_match
 from .covers import fetch_and_cache_cover
+from .discover import discover
 from .db import repository as repo
 from .db.models import (
     AuthStatus,
@@ -684,6 +686,45 @@ def run_enrich_job(session: Session, job: Job) -> str:
     return besked
 
 
+DISCOVER_KEY = "discovered_sites"
+
+
+def run_discover_job(session: Session, job: Job) -> str:
+    """Sondera Bonniers varumärken efter Prenly-läsare.
+
+    Resultatet sparas som inställning och visas på uppgiftssidan. Inga
+    inloggningar sker här: det gör de först när användaren väljer att
+    lägga till en sajt.
+    """
+    http = build_session()
+
+    def progress(gjort: int, totalt: int) -> None:
+        repo.update_job_progress(job.id, gjort, totalt)
+
+    fynd = discover(http, progress=progress)
+    kanda = {s.url for s in repo.list_sites(session)}
+    poster = [
+        {
+            "doman": f.doman,
+            "url": f.url,
+            "antal": f.antal,
+            "lasbara": sum(1 for t in f.titlar if t.get("readable")),
+            "titlar": [t.get("name") for t in f.titlar[:8]],
+            "fel": f.fel,
+            "kand": f.url in kanda,
+        }
+        for f in sorted(fynd, key=lambda f: -f.antal)
+    ]
+    repo.set_setting(session, DISCOVER_KEY, json.dumps(poster, ensure_ascii=False))
+    _spara_detalj(session, job, [
+        f"{p['doman']}: {p['antal']} titlar" + (" (redan tillagd)" if p["kand"] else "")
+        for p in poster
+    ])
+    nya = sum(1 for p in poster if not p["kand"])
+    unika = len({t for f in fynd for t in (x.get("id") for x in f.titlar)})
+    return f"{len(poster)} sajter med läsare, {nya} ej tillagda, {unika} titlar totalt"
+
+
 def run_retitle_job(session: Session, job: Job) -> str:
     """Skriv om titeln på kopplade böcker efter publikationens mönster.
 
@@ -898,6 +939,8 @@ def execute_job(session: Session, job: Job) -> None:
             summary = run_enrich_job(session, job)
         elif job.type == JobType.RETITLE.value:
             summary = run_retitle_job(session, job)
+        elif job.type == JobType.DISCOVER.value:
+            summary = run_discover_job(session, job)
         elif job.type == JobType.DOWNLOAD.value:
             summary = run_download_job(session, job)
         else:
